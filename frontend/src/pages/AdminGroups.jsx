@@ -1,10 +1,39 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct, tagCls, MODULES } from '../constants';
+import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 import GroupRow from '../components/GroupRow';
+import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
+
+const DAYS_OPTIONS = ['Odd Days', 'Even Days', 'Every Day'];
+
+function generateTimeSlots() {
+    const slots = [];
+    for (let h = 8; h <= 19; h++) {
+        slots.push(`${String(h).padStart(2, '0')}:00`);
+        slots.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    slots.push('20:00');
+    return slots;
+}
+
+const TIME_SLOTS = generateTimeSlots();
+
+const EMPTY_FORM = {
+    tid: '',
+    group: '',
+    lang: '',
+    level: 1,
+    doneInLevel: 0,
+    startTime: '',
+    endTime: '',
+    days: 'Odd Days',
+    start: '',
+    exam: '',
+    students: '',
+};
 
 export default function AdminGroups({ token, onLogout }) {
     const [teachers, setTeachers] = useState(null);
@@ -26,6 +55,13 @@ export default function AdminGroups({ token, onLogout }) {
     const [bulkDeleting, setBulkDeleting] = useState(false);
     const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
+    // Create / Edit modal
+    const [modalOpen, setModalOpen] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+    const [form, setForm] = useState(EMPTY_FORM);
+    const [formLoading, setFormLoading] = useState(false);
+    const [formError, setFormError] = useState('');
+
     useEffect(() => { loadData(); }, [showArchived]);
 
     async function loadData() {
@@ -46,19 +82,16 @@ export default function AdminGroups({ token, onLogout }) {
     const loading = teachers === null || allGroups === null;
 
     let filtered = allGroups || [];
-    // Module (category) filter
     if (moduleFilter !== 'all') {
         const moduleCourses = MODULES[moduleFilter] || [];
         filtered = filtered.filter((g) => moduleCourses.includes(g.lang));
     }
-    // Subject (specific course) filter
     if (langFilter !== 'all') filtered = filtered.filter((g) => g.lang === langFilter);
     if (progFilter !== 'all') filtered = filtered.filter((g) => {
         const p = pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang));
         return progFilter === 'not-started' ? p === 0 : progFilter === 'in-progress' ? p > 0 && p < 100 : p === 100;
     });
 
-    // Subjects available in the subject dropdown: if a module is selected, show only its courses
     const availableSubjects = moduleFilter !== 'all'
         ? { [moduleFilter]: MODULES[moduleFilter] }
         : MODULES;
@@ -70,6 +103,97 @@ export default function AdminGroups({ token, onLogout }) {
         { key: 'completed', label: 'Completed (100%)' },
     ];
 
+    // ── Form helpers ──────────────────────────────────────────────
+    function setField(key, val) {
+        setForm(f => {
+            const next = { ...f, [key]: val };
+            // Auto-calc exam when start or days change
+            if ((key === 'start' || key === 'days') && next.start && next.days) {
+                try { next.exam = calcExamDate(next.start, next.days); } catch { /* ignore */ }
+            }
+            // Auto-calc endTime when startTime or lang changes
+            if (key === 'startTime' || key === 'lang') {
+                const isKids = next.lang === 'Python (Kids)' || next.lang === 'Scratch';
+                const dur = isKids ? 90 : 120;
+                if (next.startTime) {
+                    const [h, m] = next.startTime.split(':').map(Number);
+                    const total = h * 60 + m + dur;
+                    next.endTime = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+                }
+            }
+            // Reset level when lang changes
+            if (key === 'lang') { next.level = 1; next.doneInLevel = 0; }
+            return next;
+        });
+    }
+
+    function openCreate() {
+        setEditingId(null);
+        setForm({ ...EMPTY_FORM, tid: (teachers && teachers[0]?.id) || '' });
+        setFormError('');
+        setModalOpen(true);
+    }
+
+    function openEdit(group) {
+        setEditingId(group.id || group._id);
+        setForm({
+            tid: group.tid || '',
+            group: group.group || '',
+            lang: group.lang || '',
+            level: group.level || 1,
+            doneInLevel: group.doneInLevel || 0,
+            startTime: group.startTime || '',
+            endTime: group.endTime || '',
+            days: group.days || 'Odd Days',
+            start: group.start ? group.start.substring(0, 10) : '',
+            exam: group.exam ? group.exam.substring(0, 10) : '',
+            students: group.students || '',
+        });
+        setFormError('');
+        setModalOpen(true);
+    }
+
+    function closeModal() { setModalOpen(false); setEditingId(null); }
+
+    async function handleSubmit() {
+        const { tid, group, lang, level, doneInLevel, startTime, endTime, days, start, exam, students } = form;
+        if (!tid || !group.trim() || !lang || !startTime || !endTime || !start || !exam || !students) {
+            setFormError('Please fill in all required fields.');
+            return;
+        }
+        setFormError('');
+        setFormLoading(true);
+        try {
+            const body = {
+                tid,
+                group: group.trim(),
+                lang,
+                level: +level,
+                doneInLevel: +(doneInLevel || 0),
+                startTime,
+                endTime,
+                days,
+                start,
+                exam,
+                students: +students,
+            };
+            if (editingId) {
+                await api('PUT', '/api/groups/' + editingId, body, token, onLogout);
+                showToast('Group updated successfully');
+            } else {
+                await api('POST', '/api/groups', body, token, onLogout);
+                showToast('Group created successfully');
+            }
+            closeModal();
+            loadData();
+        } catch (err) {
+            setFormError(err.message);
+        } finally {
+            setFormLoading(false);
+        }
+    }
+
+    // ── Delete ────────────────────────────────────────────────────
     function handleDeleteClick(group) {
         setPendingDeleteId(group.id || group._id);
         setConfirmMsg(`Delete group <strong>${group.group}</strong> (${group.lang})?<br>This action cannot be undone.`);
@@ -124,8 +248,19 @@ export default function AdminGroups({ token, onLogout }) {
         }
     }
 
+    // ── Derived for form ──────────────────────────────────────────
+    const selectedLangCfg = PC[form.lang];
+    const maxLevel = selectedLangCfg?.levels || 1;
+
     return (
         <div className="panel-body">
+            {/* Top bar: Create button */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                <button className="add-btn" onClick={openCreate} style={{ margin: 0 }}>
+                    <span className="add-icon">+</span>Add Group
+                </button>
+            </div>
+
             <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '8px', alignItems: 'flex-start' }}>
                 {/* Module filter */}
                 <div>
@@ -250,6 +385,7 @@ export default function AdminGroups({ token, onLogout }) {
                                             <GroupRow
                                                 key={g.id || g._id}
                                                 group={g}
+                                                onEdit={openEdit}
                                                 onDelete={handleDeleteClick}
                                                 onArchive={handleArchive}
                                                 selected={selectedIds.has(g.id || g._id)}
@@ -263,6 +399,116 @@ export default function AdminGroups({ token, onLogout }) {
                     })
                 )
             }
+
+            {/* ── Create / Edit Group Modal ── */}
+            <Modal open={modalOpen} onClose={closeModal} className="" style={{ maxWidth: '560px' }}>
+                <div className="modal-hd">
+                    <div>
+                        <div className="modal-title">{editingId ? 'Edit Group' : 'Create New Group'}</div>
+                        <div className="modal-sub">{editingId ? 'Update group details' : 'Fill in all details to add a new group'}</div>
+                    </div>
+                    <button className="modal-close" onClick={closeModal}>×</button>
+                </div>
+
+                {/* Teacher */}
+                <div className="f-group">
+                    <label className="f-label">Teacher <span style={{ color: 'var(--red)' }}>*</span></label>
+                    <select className="f-select" value={form.tid} onChange={e => setField('tid', e.target.value)}>
+                        <option value="">Select teacher</option>
+                        {(teachers || []).map(t => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Two columns: Group name + Subject */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">Group Name <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <input className="f-input" type="text" placeholder="e.g. JS-101" value={form.group} onChange={e => setField('group', e.target.value)} />
+                    </div>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">Subject <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <select className="f-select" value={form.lang} onChange={e => setField('lang', e.target.value)}>
+                            <option value="">Select subject</option>
+                            {Object.entries(MODULES).map(([cat, courses]) => (
+                                <optgroup key={cat} label={cat}>
+                                    {courses.map(c => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                {/* Level + Done in level */}
+                {form.lang && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Level (1 – {maxLevel})</label>
+                            <input className="f-input" type="number" min="1" max={maxLevel} value={form.level}
+                                onChange={e => setField('level', Math.min(maxLevel, Math.max(1, +e.target.value)))} />
+                        </div>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Done in Level (0 – 13)</label>
+                            <input className="f-input" type="number" min="0" max="13" value={form.doneInLevel}
+                                onChange={e => setField('doneInLevel', Math.min(13, Math.max(0, +e.target.value)))} />
+                        </div>
+                    </div>
+                )}
+
+                {/* Schedule row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">Start Time <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <select className="f-select" value={form.startTime} onChange={e => setField('startTime', e.target.value)}>
+                            <option value="">–</option>
+                            {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </div>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">End Time</label>
+                        <input className="f-input" type="text" value={form.endTime} readOnly
+                            style={{ opacity: 0.6, cursor: 'default' }} placeholder="Auto-calculated" />
+                    </div>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">Days <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <select className="f-select" value={form.days} onChange={e => setField('days', e.target.value)}>
+                            {DAYS_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                    </div>
+                </div>
+
+                {/* Dates + Students */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">Start Date <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <input className="f-input" type="date" value={form.start} onChange={e => setField('start', e.target.value)} />
+                    </div>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">Exam Date</label>
+                        <input className="f-input" type="date" value={form.exam} onChange={e => setField('exam', e.target.value)}
+                            style={{ opacity: form.start ? 1 : 0.5 }} />
+                    </div>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">Students <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <input className="f-input" type="number" min="1" max="25" placeholder="1–25" value={form.students}
+                            onChange={e => setField('students', e.target.value)} />
+                    </div>
+                </div>
+
+                {formError && (
+                    <div style={{ marginTop: '8px', padding: '10px 14px', background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '13px', fontFamily: 'var(--fm)' }}>
+                        {formError}
+                    </div>
+                )}
+
+                <div className="modal-actions">
+                    <button className="btn-submit" onClick={handleSubmit} disabled={formLoading}>
+                        {formLoading ? 'Saving...' : editingId ? 'Save Changes' : 'Create Group'}
+                    </button>
+                    <button className="btn-cancel" onClick={closeModal}>Cancel</button>
+                </div>
+            </Modal>
 
             <ConfirmModal
                 open={confirmOpen}

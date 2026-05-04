@@ -1,18 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ToastProvider } from './components/Toast';
 import AdminLogin from './pages/AdminLogin';
-import TeacherLogin from './pages/TeacherLogin';
-import TeacherApp from './pages/TeacherApp';
 import AdminApp from './pages/AdminApp';
 import NotFound from './pages/NotFound';
 import { isTokenExpired } from './api';
 
-
 function AppContent() {
     const [token, setToken] = useState(() => {
         const savedToken = localStorage.getItem('token');
-        // Clear token immediately if it's expired — do NOT let user into a protected page
         if (isTokenExpired(savedToken)) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -36,11 +32,7 @@ function AppContent() {
         setUser(newUser);
         localStorage.setItem('token', newToken);
         localStorage.setItem('user', JSON.stringify(newUser));
-        if (newUser.type === 'admin') {
-            navigate('/admin');
-        } else {
-            navigate('/teacher');
-        }
+        navigate('/admin');
     }
 
     function handleLogout() {
@@ -48,7 +40,7 @@ function AppContent() {
         setUser(null);
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        navigate(user?.type === 'admin' ? '/admin/login' : '/teacher/login');
+        navigate('/admin/login');
     }
 
     return (
@@ -57,21 +49,12 @@ function AppContent() {
                 user?.type === 'admin' ? <Navigate to="/admin" replace /> :
                     <AdminLogin onLogin={handleLogin} />
             } />
-            <Route path="/teacher/login" element={
-                user?.type === 'teacher' ? <Navigate to="/teacher" replace /> :
-                    <TeacherLogin onLogin={handleLogin} />
-            } />
-            <Route path="/teacher/*" element={
-                (token && user?.type === 'teacher') ?
-                    <TeacherApp token={token} user={user} onLogout={handleLogout} /> :
-                    <Navigate to="/teacher/login" replace />
-            } />
             <Route path="/admin/*" element={
                 (token && user?.type === 'admin') ?
                     <AdminApp token={token} onLogout={handleLogout} /> :
                     <Navigate to="/admin/login" replace />
             } />
-            <Route path="/" element={<Navigate to="/teacher/login" replace />} />
+            <Route path="/" element={<Navigate to="/admin/login" replace />} />
             <Route path="*" element={<NotFound />} />
         </Routes>
     );
