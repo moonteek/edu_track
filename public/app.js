@@ -1,5 +1,4 @@
-// !! CHANGE THIS to your backend Vercel URL if deploying separately !!
-// e.g. const API_BASE = 'https://edutrack-api.vercel.app';
+// Set this to your deployed backend URL when hosting frontend separately.
 const API_BASE = '';
 
 const PC = { 'HTML': { levels: 1, color: '#ff6b4a' }, 'CSS': { levels: 2, color: '#6b8fff' }, 'JavaScript': { levels: 3, color: '#f5c518' }, 'React JS': { levels: 3, color: '#61dafb' }, 'Node JS': { levels: 3, color: '#78c97a' } };

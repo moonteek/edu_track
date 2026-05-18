@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.PROD ? 'https://edu-track-j9gn.onrender.com' : '';
+// In production, set VITE_API_URL in your hosting provider's env vars (e.g. Vercel).
+// In dev, Vite proxies /api to localhost:5000 so no base URL is needed.
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 /** Returns true if the JWT token is missing or its exp has already passed. */
 export function isTokenExpired(token) {
