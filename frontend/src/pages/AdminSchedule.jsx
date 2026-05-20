@@ -3,127 +3,44 @@ import { api } from '../api';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 
-// ─── Lightweight XLSX builder (no library required) ──────────────────────────
-function buildXlsx(sheets) {
-    // sheets: [{ name, rows: [[cell,...], ...] }]
-    // Generates a valid .xlsx (Office Open XML) Blob entirely in JS
-    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// ─── Excel SpreadsheetML builder (no library, no binary, Excel-native XML) ───
+function buildExcel(sheets) {
+    // sheets: [{ name: string, rows: string[][] }]
+    // Produces Excel 2003 SpreadsheetML — a plain XML that Excel opens natively.
+    const esc = (s) => String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
 
-    const sharedStrings = [];
-    const ssMap = {};
-    function si(val) {
-        const s = String(val ?? '');
-        if (s in ssMap) return ssMap[s];
-        const idx = sharedStrings.length;
-        sharedStrings.push(s);
-        ssMap[s] = idx;
-        return idx;
-    }
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    xml += '<?mso-application progid="Excel.Sheet"?>\n';
+    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n';
+    xml += ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
+    xml += '<Styles>\n';
+    xml += '  <Style ss:ID="Bold"><Font ss:Bold="1" ss:Size="11"/></Style>\n';
+    xml += '  <Style ss:ID="Title"><Font ss:Bold="1" ss:Size="13"/></Style>\n';
+    xml += '</Styles>\n';
 
-    const colLetters = (n) => {
-        let s = '';
-        while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
-        return s;
-    };
-
-    const sheetXmls = sheets.map(({ name, rows }) => {
-        let xml = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`;
+    for (const { name, rows } of sheets) {
+        const safeName = String(name).slice(0, 31).replace(/[\\\/\?\*\[\]:]/g, '_');
+        xml += `<Worksheet ss:Name="${esc(safeName)}">\n<Table>\n`;
         rows.forEach((row, ri) => {
-            xml += `<row r="${ri + 1}">`;
-            row.forEach((cell, ci) => {
-                const ref = `${colLetters(ci)}${ri + 1}`;
-                const idx = si(cell);
-                xml += `<c r="${ref}" t="s"><v>${idx}</v></c>`;
+            const styleAttr = ri === 0 ? ' ss:StyleID="Title"'
+                            : ri === 1 ? ' ss:StyleID="Bold"'
+                            : '';
+            xml += `<Row${styleAttr}>`;
+            row.forEach(cell => {
+                xml += `<Cell><Data ss:Type="String">${esc(String(cell ?? ''))}</Data></Cell>`;
             });
-            xml += `</row>`;
+            xml += '</Row>\n';
         });
-        xml += `</sheetData></worksheet>`;
-        return { name: esc(name), xml };
-    });
-
-    const ssXml = `<?xml version="1.0" encoding="UTF-8"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sharedStrings.length}" uniqueCount="${sharedStrings.length}">${sharedStrings.map(s => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join('')}</sst>`;
-
-    const wbXml = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheetXmls.map((s, i) => `<sheet name="${s.name}" sheetId="${i + 1}" r:id="rId${i + 2}"/>`).join('')}</sheets></workbook>`;
-
-    const wbRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>${sheetXmls.map((_, i) => `<Relationship Id="rId${i + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}</Relationships>`;
-
-    const contentTypes = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>${sheetXmls.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`;
-
-    const pkgRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
-
-    // Build ZIP manually (local file method – stored, no compression)
-    function strToBytes(str) {
-        const bytes = [];
-        for (let i = 0; i < str.length; i++) {
-            const c = str.charCodeAt(i);
-            if (c < 128) bytes.push(c);
-            else if (c < 2048) { bytes.push(0xC0 | (c >> 6)); bytes.push(0x80 | (c & 63)); }
-            else { bytes.push(0xE0 | (c >> 12)); bytes.push(0x80 | ((c >> 6) & 63)); bytes.push(0x80 | (c & 63)); }
-        }
-        return new Uint8Array(bytes);
+        xml += '</Table>\n</Worksheet>\n';
     }
 
-    function crc32(data) {
-        const table = new Uint32Array(256);
-        for (let i = 0; i < 256; i++) {
-            let c = i;
-            for (let j = 0; j < 8; j++) c = (c & 1) ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
-            table[i] = c;
-        }
-        let crc = 0xFFFFFFFF;
-        for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
-        return (crc ^ 0xFFFFFFFF) >>> 0;
-    }
-
-    function u16(n) { return [n & 0xFF, (n >> 8) & 0xFF]; }
-    function u32(n) { return [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF]; }
-
-    const entries = [
-        { name: '[Content_Types].xml', data: strToBytes(contentTypes) },
-        { name: '_rels/.rels', data: strToBytes(pkgRels) },
-        { name: 'xl/workbook.xml', data: strToBytes(wbXml) },
-        { name: 'xl/_rels/workbook.xml.rels', data: strToBytes(wbRels) },
-        { name: 'xl/sharedStrings.xml', data: strToBytes(ssXml) },
-        ...sheetXmls.map((s, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: strToBytes(s.xml) })),
-    ];
-
-    const parts = [];
-    const central = [];
-    let offset = 0;
-
-    for (const entry of entries) {
-        const name = strToBytes(entry.name);
-        const crc = crc32(entry.data);
-        const size = entry.data.length;
-        const local = new Uint8Array([
-            0x50, 0x4B, 0x03, 0x04, 20, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, ...u32(crc), ...u32(size), ...u32(size),
-            ...u16(name.length), 0, 0, ...name, ...entry.data,
-        ]);
-        const cent = new Uint8Array([
-            0x50, 0x4B, 0x01, 0x02, 20, 0, 20, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, ...u32(crc), ...u32(size), ...u32(size),
-            ...u16(name.length), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...u32(offset), ...name,
-        ]);
-        parts.push(local);
-        central.push(cent);
-        offset += local.length;
-    }
-
-    const centralSize = central.reduce((a, b) => a + b.length, 0);
-    const eocd = new Uint8Array([
-        0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0,
-        ...u16(entries.length), ...u16(entries.length),
-        ...u32(centralSize), ...u32(offset), 0, 0,
-    ]);
-
-    const all = [...parts, ...central, eocd];
-    const total = all.reduce((a, b) => a + b.length, 0);
-    const out = new Uint8Array(total);
-    let pos = 0;
-    for (const part of all) { out.set(part, pos); pos += part.length; }
-
-    return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    xml += '</Workbook>';
+    return new Blob(['\uFEFF' + xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -197,17 +114,16 @@ export default function AdminSchedule({ token }) {
     // ── Excel Export ──────────────────────────────────────────────────────────
     function handleDownloadExcel() {
         if (!teachers || !groups) return;
-        const dayLabel = dayView === 'odd' ? 'Odd Days (Mon, Wed, Fri)' : 'Even Days (Tue, Thu, Sat)';
-        const sheets = [];
 
-        // One sheet per specialization (filtered by current view subject if set)
+        const dayLabel = dayView === 'odd' ? 'Odd Days (Mon, Wed, Fri)' : 'Even Days (Tue, Thu, Sat)';
         const subjectsToExport = filterSubject === 'All' ? allSubjects : [filterSubject];
+        const sheets = [];
 
         for (const subject of subjectsToExport) {
             const subjTeachers = groupedTeachers[subject] || [];
             if (!subjTeachers.length) continue;
 
-            // Collect all unique slots across all teachers in this subject
+            // Collect all unique slots across teachers in this subject
             const allSlots = [...new Set(
                 subjTeachers.flatMap(t => {
                     const subs = Array.isArray(t.subject) ? t.subject : [t.subject];
@@ -215,11 +131,11 @@ export default function AdminSchedule({ token }) {
                 })
             )].sort();
 
-            // Header row
-            const header = ['Teacher', 'Groups Total', ...allSlots];
             const rows = [
+                // Row 0: title
                 [`${subject} — ${dayLabel}`],
-                header,
+                // Row 1: header
+                ['Teacher', 'Total Groups', ...allSlots],
             ];
 
             for (const t of subjTeachers) {
@@ -242,9 +158,7 @@ export default function AdminSchedule({ token }) {
                 rows.push([t.name, String(tGroups.length), ...slotCells]);
             }
 
-            // Sheet name max 31 chars (Excel limit)
-            const sheetName = subject.length > 28 ? subject.slice(0, 28) + '...' : subject;
-            sheets.push({ name: sheetName, rows });
+            sheets.push({ name: subject, rows });
         }
 
         if (!sheets.length) {
@@ -252,16 +166,18 @@ export default function AdminSchedule({ token }) {
             return;
         }
 
-        const blob = buildXlsx(sheets);
+        const blob = buildExcel(sheets);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         const date = new Date().toISOString().slice(0, 10);
         const dayTag = dayView === 'odd' ? 'OddDays' : 'EvenDays';
-        a.download = `EduTrack_Schedule_${dayTag}_${date}.xlsx`;
+        a.download = `EduTrack_Schedule_${dayTag}_${date}.xls`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast('Schedule exported to Excel successfully');
+        showToast('Schedule exported successfully');
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -296,10 +212,10 @@ export default function AdminSchedule({ token }) {
                         ))}
                     </select>
 
-                    {/* ── Download Button ── */}
+                    {/* ── Export Excel Button ── */}
                     <button
                         onClick={handleDownloadExcel}
-                        title={`Download ${filterSubject === 'All' ? 'all' : filterSubject} schedule as Excel`}
+                        title={`Export ${filterSubject === 'All' ? 'all' : filterSubject} schedule as Excel`}
                         style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
                             padding: '8px 14px', borderRadius: '8px',
