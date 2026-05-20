@@ -6,6 +6,7 @@ const cors = require('cors');
 const connectDB = require('../lib/db');
 const Teacher = require('../models/Teacher');
 const Group = require('../models/Group');
+const Admin = require('../models/Admin');
 const seed = require('../lib/seed');
 
 const app = express();
@@ -95,11 +96,28 @@ function adminOnly(req, res, next) {
 app.get('/', (_req, res) => res.json({ message: 'EduTrack API Backend is running' }));
 app.get('/api', (_req, res) => res.json({ status: 'ok', message: 'EduTrack API running' }));
 
-app.post('/api/auth/admin', (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'username and password required' });
-  if (username !== ADMIN_USER || password !== ADMIN_PASS) return res.status(401).json({ error: 'Invalid credentials' });
-  res.json({ token: issueToken({ role: 'admin' }) });
+app.post('/api/auth/admin', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'username and password required' });
+    
+    const adminCount = await Admin.countDocuments();
+    if (adminCount === 0) {
+      if (username === ADMIN_USER && password === ADMIN_PASS) {
+        return res.json({ token: issueToken({ role: 'admin' }) });
+      }
+    }
+    
+    const dbAdmin = await Admin.findOne({ username }).select('+hash');
+    if (!dbAdmin || !bcrypt.compareSync(password, dbAdmin.hash)) {
+      if (username === ADMIN_USER && password === ADMIN_PASS) {
+        return res.json({ token: issueToken({ role: 'admin' }) });
+      }
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    res.json({ token: issueToken({ role: 'admin' }) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/auth/teacher', async (req, res) => {
@@ -199,6 +217,32 @@ app.delete('/api/teachers/:id', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.post('/api/admins', auth, adminOnly, async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'username and password required' });
+    if (await Admin.findOne({ username })) return res.status(409).json({ error: 'Username already taken' });
+    
+    const admin = await Admin.create({ username, hash: bcrypt.hashSync(password, SALT) });
+    res.status(201).json(admin.toJSON());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/admins', auth, adminOnly, async (_req, res) => {
+  try {
+    res.json((await Admin.find()).map(a => a.toJSON()));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/admins/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const admin = await Admin.findById(req.params.id);
+    if (!admin) return res.status(404).json({ error: 'Admin not found' });
+    await admin.deleteOne();
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/groups', auth, async (req, res) => {
   try {
     const showArchived = req.query.archived === 'true';
@@ -234,7 +278,7 @@ app.put('/api/groups/:id/unarchive', auth, async (req, res) => {
 
 app.post('/api/groups', auth, async (req, res) => {
   try {
-    let { tid, group, lang, startTime, endTime, start, exam, students, level, doneInLevel, days } = req.body;
+    let { tid, group, lang, startTime, endTime, start, exam, students, level, doneInLevel, days, autoProgress } = req.body;
     if (req.user.role === 'teacher') tid = req.user.tid;
     if (!group || !lang || !startTime || !endTime || !start || !exam || !students || !level || !tid) return res.status(400).json({ error: 'All fields required' });
     if (!validLangs.includes(lang)) return res.status(400).json({ error: 'Invalid lang' });
@@ -248,7 +292,7 @@ app.post('/api/groups', auth, async (req, res) => {
 
     if ((await Group.countDocuments({ tid })) >= 10) return res.status(400).json({ error: 'A teacher cannot have more than 10 groups' });
 
-    const g = await Group.create({ tid, group, lang, startTime, endTime, start, exam, students: +students, level, doneInLevel, days: days || 'Every Day' });
+    const g = await Group.create({ tid, group, lang, startTime, endTime, start, exam, students: +students, level, doneInLevel, days: days || 'Every Day', autoProgress: !!autoProgress });
     res.status(201).json(g.toJSON());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -260,7 +304,7 @@ app.put('/api/groups/:id', auth, async (req, res) => {
     if (req.user.role === 'teacher' && g.tid !== req.user.tid) return res.status(403).json({ error: 'Forbidden' });
     if (req.body.lang && !validLangs.includes(req.body.lang)) return res.status(400).json({ error: 'Invalid lang' });
     if (req.body.students != null && +req.body.students > 25) return res.status(400).json({ error: 'A group cannot have more than 25 students' });
-    for (const f of ['group', 'lang', 'startTime', 'endTime', 'start', 'exam', 'students', 'level', 'doneInLevel', 'days']) if (req.body[f] != null) g[f] = req.body[f];
+    for (const f of ['group', 'lang', 'startTime', 'endTime', 'start', 'exam', 'students', 'level', 'doneInLevel', 'days', 'autoProgress']) if (req.body[f] != null) g[f] = req.body[f];
     await g.save(); res.json(g.toJSON());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

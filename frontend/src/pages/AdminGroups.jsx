@@ -33,6 +33,7 @@ const EMPTY_FORM = {
     start: '',
     exam: '',
     students: '',
+    autoProgress: false,
 };
 
 export default function AdminGroups({ token, onLogout }) {
@@ -148,6 +149,7 @@ export default function AdminGroups({ token, onLogout }) {
             start: group.start ? group.start.substring(0, 10) : '',
             exam: group.exam ? group.exam.substring(0, 10) : '',
             students: group.students || '',
+            autoProgress: group.autoProgress || false,
         });
         setFormError('');
         setModalOpen(true);
@@ -156,7 +158,7 @@ export default function AdminGroups({ token, onLogout }) {
     function closeModal() { setModalOpen(false); setEditingId(null); }
 
     async function handleSubmit() {
-        const { tid, group, lang, level, doneInLevel, startTime, endTime, days, start, exam, students } = form;
+        const { tid, group, lang, level, doneInLevel, startTime, endTime, days, start, exam, students, autoProgress } = form;
         if (!tid || !group.trim() || !lang || !startTime || !endTime || !start || !exam || !students) {
             setFormError('Please fill in all required fields.');
             return;
@@ -176,6 +178,7 @@ export default function AdminGroups({ token, onLogout }) {
                 start,
                 exam,
                 students: +students,
+                autoProgress: !!autoProgress,
             };
             if (editingId) {
                 await api('PUT', '/api/groups/' + editingId, body, token, onLogout);
@@ -524,6 +527,21 @@ export default function AdminGroups({ token, onLogout }) {
                         <input className="f-input" type="number" min="1" max="25" placeholder="1–25" value={form.students}
                             onChange={e => setField('students', e.target.value)} />
                     </div>
+                </div>
+
+                {/* Dynamic auto-progress checkbox */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--border2)' }}>
+                    <input 
+                        type="checkbox" 
+                        id="autoProgress" 
+                        checked={form.autoProgress || false} 
+                        onChange={e => setField('autoProgress', e.target.checked)} 
+                        style={{ cursor: 'pointer', width: '18px', height: '18px', accentColor: 'var(--yellow)', margin: 0 }} 
+                    />
+                    <label htmlFor="autoProgress" style={{ color: 'var(--text)', fontSize: '13px', fontFamily: 'var(--fm)', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span>Progress Automatically</span>
+                        <span style={{ fontSize: '11px', color: 'var(--gray)', fontWeight: 400 }}>Dynamically advances levels and lessons based on real days elapsed since start date.</span>
+                    </label>
                 </div>
 
                 {formError && (

@@ -1,9 +1,13 @@
-import { PC, totalDone, totalLessons, tagCls, fmtDate } from '../constants';
+import { PC, totalDone, totalLessons, tagCls, fmtDate, autoProgress } from '../constants';
 import LevelBar from './LevelBar';
 
 export default function GroupRow({ group, onEdit, onDelete, onArchive, selected, onSelect }) {
+    const isAuto = group.autoProgress === true;
+    const auto = isAuto ? autoProgress(group) : null;
+    const currentLevel = isAuto ? auto.level : group.level;
+    const done = isAuto ? auto.totalDone : totalDone(group.level, group.doneInLevel);
+
     const cfg = PC[group.lang] || { levels: 1 };
-    const done = totalDone(group.level, group.doneInLevel);
     const tl = totalLessons(group.lang);
 
     return (
@@ -18,11 +22,39 @@ export default function GroupRow({ group, onEdit, onDelete, onArchive, selected,
                     />
                 </td>
             )}
-            <td className="td-w">{group.group}</td>
+            <td className="td-w">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {group.group}
+                    {group.autoProgress && (
+                        <span 
+                            title="Progressing Automatically" 
+                            style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '3px',
+                                background: 'rgba(76,175,80,0.12)', 
+                                color: '#4caf50', 
+                                border: '1px solid rgba(76,175,80,0.25)', 
+                                padding: '2px 6px', 
+                                borderRadius: '4px', 
+                                fontSize: '9px', 
+                                fontWeight: 700,
+                                fontFamily: 'var(--fm)',
+                                letterSpacing: '0.5px'
+                            }}
+                        >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                            </svg>
+                            AUTO
+                        </span>
+                    )}
+                </div>
+            </td>
             <td><span className={'tag tag-' + tagCls(group.lang)}>{group.lang}</span></td>
             <td>
                 <span style={{ fontFamily: 'var(--fm)', fontSize: '11px', color: 'var(--yellow)', background: 'var(--yglow)', padding: '4px 12px', borderRadius: '100px', border: '1px solid var(--yborder)', whiteSpace: 'nowrap' }}>
-                    Lv {group.level}/{cfg.levels}
+                    Lv {currentLevel}/{cfg.levels}
                 </span>
             </td>
             <td className="td-m">{group.startTime || '–'} – {group.endTime || '–'}</td>

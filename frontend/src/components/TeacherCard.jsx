@@ -1,9 +1,14 @@
-import { PC, LPL, totalDone, totalLessons, pct, tagCls } from '../constants';
+import { PC, LPL, totalDone, totalLessons, pct, tagCls, autoProgress } from '../constants';
 
 export default function TeacherCard({ teacher, groups, index = 0, onEdit, onDelete, onViewSchedule, onAddGroup }) {
     const ts = groups.reduce((a, g) => a + g.students, 0);
     const ap = groups.length
-        ? Math.round(groups.reduce((a, g) => a + pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang)), 0) / groups.length)
+        ? Math.round(groups.reduce((a, g) => {
+            const isAuto = g.autoProgress === true;
+            const auto = isAuto ? autoProgress(g) : null;
+            const done = isAuto ? auto.totalDone : totalDone(g.level, g.doneInLevel);
+            return a + pct(done, totalLessons(g.lang));
+        }, 0) / groups.length)
         : 0;
 
     return (
@@ -29,13 +34,26 @@ export default function TeacherCard({ teacher, groups, index = 0, onEdit, onDele
                 <div style={{ fontSize: '10px', color: 'var(--gray)', fontFamily: 'var(--fm)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>Groups</div>
                 <div className="tc-groups-list">
                     {groups.length ? groups.map((g) => {
-                        const p = pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang));
+                        const isAuto = g.autoProgress === true;
+                        const auto = isAuto ? autoProgress(g) : null;
+                        const currentLevel = isAuto ? auto.level : g.level;
+                        const done = isAuto ? auto.totalDone : totalDone(g.level, g.doneInLevel);
+                        const p = pct(done, totalLessons(g.lang));
                         const cfg = PC[g.lang] || { levels: 1 };
                         return (
                             <div key={g.id} className="tc-group-row">
                                 <span className={'tag tag-' + tagCls(g.lang)} style={{ fontSize: '10px' }}>{g.lang}</span>
-                                <span className="tc-group-name">{g.group}</span>
-                                <span style={{ fontSize: '10px', color: 'var(--gray)', fontFamily: 'var(--fm)', whiteSpace: 'nowrap' }}>Lv{g.level}/{cfg.levels}</span>
+                                <span className="tc-group-name" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    {g.group}
+                                    {g.autoProgress && (
+                                        <span title="Auto Progress" style={{ color: '#4caf50', display: 'inline-flex', alignItems: 'center' }}>
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                                            </svg>
+                                        </span>
+                                    )}
+                                </span>
+                                <span style={{ fontSize: '10px', color: 'var(--gray)', fontFamily: 'var(--fm)', whiteSpace: 'nowrap' }}>Lv{currentLevel}/{cfg.levels}</span>
                                 <div className="tc-group-prog">
                                     <div className="tc-mini-track"><div className="tc-mini-fill" style={{ width: p + '%' }}></div></div>
                                     <span className="tc-group-pct">{p}%</span>

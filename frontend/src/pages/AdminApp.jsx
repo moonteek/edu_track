@@ -4,6 +4,7 @@ import AdminOverview from './AdminOverview';
 import AdminGroups from './AdminGroups';
 import AdminTeachers from './AdminTeachers';
 import AdminSchedule from './AdminSchedule';
+import AdminAdmins from './AdminAdmins';
 import NotificationBell from '../components/NotificationBanner';
 
 const TABS = [
@@ -11,6 +12,7 @@ const TABS = [
     { key: 'groups', label: 'All Groups' },
     { key: 'teachers', label: 'Teachers' },
     { key: 'schedule', label: 'Schedule' },
+    { key: 'admins', label: 'Admins' },
 ];
 
 export default function AdminApp({ token, onLogout }) {
@@ -64,6 +66,15 @@ export default function AdminApp({ token, onLogout }) {
                             <div className="panel-subtitle">Comprehensive overview of all teachers' availability and lessons</div>
                         </div>
                         <AdminSchedule token={token} onLogout={onLogout} />
+                    </div>
+                )}
+                {activeTab === 'admins' && (
+                    <div className="panel active" id="apanel-admins">
+                        <div className="panel-header">
+                            <div className="panel-title">SYSTEM <span className="y">ADMINISTRATORS</span></div>
+                            <div className="panel-subtitle">Manage administrative access accounts and database-backed users</div>
+                        </div>
+                        <AdminAdmins token={token} onLogout={onLogout} />
                     </div>
                 )}
             </div>

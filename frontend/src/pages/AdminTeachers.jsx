@@ -119,6 +119,7 @@ export default function AdminTeachers({ token, onLogout }) {
             start: '',
             exam: '',
             students: '',
+            autoProgress: false,
         });
         setGFormError('');
         setGroupModalOpen(true);
@@ -145,7 +146,7 @@ export default function AdminTeachers({ token, onLogout }) {
     }
 
     async function handleGroupSubmit() {
-        const { group, lang, level, doneInLevel, startTime, endTime, days, start, exam, students } = gForm;
+        const { group, lang, level, doneInLevel, startTime, endTime, days, start, exam, students, autoProgress } = gForm;
         if (!group.trim() || !lang || !startTime || !endTime || !start || !exam || !students) {
             setGFormError('Please fill in all required fields.');
             return;
@@ -165,6 +166,7 @@ export default function AdminTeachers({ token, onLogout }) {
                 start,
                 exam,
                 students: +students,
+                autoProgress: !!autoProgress,
             };
             await api('POST', '/api/groups', body, token, onLogout);
             showToast('Group created successfully');
@@ -679,6 +681,21 @@ export default function AdminTeachers({ token, onLogout }) {
                             <input className="f-input" type="number" min="1" max="25" placeholder="1–25" value={gForm.students}
                                 onChange={e => setGField('students', e.target.value)} />
                         </div>
+                    </div>
+
+                    {/* Dynamic auto-progress checkbox */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--border2)' }}>
+                        <input 
+                            type="checkbox" 
+                            id="directAutoProgress" 
+                            checked={gForm.autoProgress || false} 
+                            onChange={e => setGField('autoProgress', e.target.checked)} 
+                            style={{ cursor: 'pointer', width: '18px', height: '18px', accentColor: 'var(--yellow)', margin: 0 }} 
+                        />
+                        <label htmlFor="directAutoProgress" style={{ color: 'var(--text)', fontSize: '13px', fontFamily: 'var(--fm)', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span>Progress Automatically</span>
+                            <span style={{ fontSize: '11px', color: 'var(--gray)', fontWeight: 400 }}>Dynamically advances levels and lessons based on real days elapsed since start date.</span>
+                        </label>
                     </div>
 
                     {gFormError && (
