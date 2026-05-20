@@ -69,6 +69,8 @@ const PC = {
   'Python Backend': { levels: 9, category: 'Python Backend' },
   // AI
   'AI': { levels: 12, category: 'AI' },
+  // Prompt Engineering
+  'Prompt Engineering': { levels: 4, category: 'Prompt Engineering' },
   // SMM
   'Marketing': { levels: 2, category: 'SMM' },
   'Mobilography': { levels: 2, category: 'SMM' },

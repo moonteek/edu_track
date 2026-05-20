@@ -18,6 +18,8 @@ export const PC = {
     'Python Backend': { levels: 9, color: '#3776ab', category: 'Python Backend' },
     // AI
     'AI': { levels: 12, color: '#9c27b0', category: 'AI' },
+    // Prompt Engineering
+    'Prompt Engineering': { levels: 4, color: '#00bcd4', category: 'Prompt Engineering' },
     // SMM
     'Marketing': { levels: 2, color: '#f44336', category: 'SMM' },
     'Mobilography': { levels: 2, color: '#ff9800', category: 'SMM' },
@@ -31,6 +33,7 @@ export const MODULES = {
     'Cyber Security': ['Cyber Security'],
     'Python Backend': ['Python Backend'],
     'AI': ['AI'],
+    'Prompt Engineering': ['Prompt Engineering'],
     'SMM': ['Marketing', 'Mobilography'],
 };
 
@@ -50,6 +53,7 @@ export const tagCls = (lang) => {
         'Cyber Security': 'CyberSec',
         'Python Backend': 'PythonBack',
         'AI': 'AI',
+        'Prompt Engineering': 'PromptEngineering',
         'Marketing': 'Marketing',
         'Mobilography': 'Mobilography',
     };

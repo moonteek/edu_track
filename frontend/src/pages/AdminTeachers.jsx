@@ -218,33 +218,27 @@ export default function AdminTeachers({ token, onLogout }) {
 
     async function handleSubmit() {
         const subjects = tmSubjects.filter(Boolean);
-        if (!tmName.trim() || !tmUsername.trim() || !subjects.length) {
+        if (!tmName.trim() || !subjects.length) {
             showToast('Please fill in all fields', true); return;
-        }
-        if (!editingId && !tmPass) {
-            showToast('Password is required for new accounts', true); return;
         }
         setTmError(false); setTmLoading(true);
         try {
             if (editingId) {
-                const body = { name: tmName.trim(), username: tmUsername.trim(), subject: subjects };
-                if (tmPass) body.password = tmPass;
+                const body = { name: tmName.trim(), subject: subjects };
                 await api('PUT', '/api/teachers/' + editingId, body, token, onLogout);
-                showToast('Teacher account updated');
+                showToast('Teacher profile updated');
             } else {
+                const generatedUsername = tmName.trim().toLowerCase().replace(/[^a-z0-9]/g, '') + Math.floor(100 + Math.random() * 900);
+                const generatedPassword = Math.random().toString(36).slice(-8) + 'A1!';
                 await api('POST', '/api/teachers', {
-                    name: tmName.trim(), username: tmUsername.trim(), password: tmPass, subject: subjects,
+                    name: tmName.trim(), username: generatedUsername, password: generatedPassword, subject: subjects,
                 }, token, onLogout);
-                showToast('Teacher account created');
+                showToast('Teacher profile created');
             }
             closeModal();
             loadData();
         } catch (err) {
-            if (err.message?.toLowerCase().includes('taken') || err.message?.toLowerCase().includes('exists')) {
-                setTmError(true);
-            } else {
-                showToast(err.message, true);
-            }
+            showToast(err.message, true);
         } finally {
             setTmLoading(false);
         }
@@ -409,15 +403,6 @@ export default function AdminTeachers({ token, onLogout }) {
                 <div className="f-group">
                     <label className="f-label">Full Name</label>
                     <input className="f-input" type="text" placeholder="e.g. Alisher Nazarov" value={tmName} onChange={handleNameChange} />
-                </div>
-                <div className="f-group">
-                    <label className="f-label">Username</label>
-                    <input className="f-input" type="text" placeholder="e.g. alisher.n" autoComplete="off" value={tmUsername} onChange={(e) => setTmUsername(e.target.value)} />
-                    <div className={'f-error' + (tmError ? ' show' : '')}>Username already exists.</div>
-                </div>
-                <div className="f-group">
-                    <label className="f-label">Password</label>
-                    <input className="f-input" type="password" placeholder={editingId ? 'Leave blank to keep current' : '••••••••'} value={tmPass} onChange={(e) => setTmPass(e.target.value)} />
                 </div>
                 <div className="f-group">
                     <label className="f-label">Specialization 1 <span style={{ color: 'var(--red)' }}>*</span></label>
