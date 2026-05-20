@@ -529,21 +529,6 @@ export default function AdminGroups({ token, onLogout }) {
                     </div>
                 </div>
 
-                {/* Dynamic auto-progress checkbox */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--border2)' }}>
-                    <input 
-                        type="checkbox" 
-                        id="autoProgress" 
-                        checked={form.autoProgress || false} 
-                        onChange={e => setField('autoProgress', e.target.checked)} 
-                        style={{ cursor: 'pointer', width: '18px', height: '18px', accentColor: 'var(--yellow)', margin: 0 }} 
-                    />
-                    <label htmlFor="autoProgress" style={{ color: 'var(--text)', fontSize: '13px', fontFamily: 'var(--fm)', fontWeight: 600, cursor: 'pointer', userSelect: 'none', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <span>Progress Automatically</span>
-                        <span style={{ fontSize: '11px', color: 'var(--gray)', fontWeight: 400 }}>Dynamically advances levels and lessons based on real days elapsed since start date.</span>
-                    </label>
-                </div>
-
                 {formError && (
                     <div style={{ marginTop: '8px', padding: '10px 14px', background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '13px', fontFamily: 'var(--fm)' }}>
                         {formError}

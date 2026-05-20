@@ -8,6 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 export default function AdminAdmins({ token, onLogout }) {
     const [admins, setAdmins] = useState(null);
     const [modalOpen, setModalOpen] = useState(false);
+    const [editingId, setEditingId] = useState(null);
     const [admUser, setAdmUser] = useState('');
     const [admPass, setAdmPass] = useState('');
     const [loading, setLoading] = useState(false);
@@ -34,21 +35,40 @@ export default function AdminAdmins({ token, onLogout }) {
     }
 
     function openCreate() {
+        setEditingId(null);
         setAdmUser(''); setAdmPass(''); setFormError('');
         setModalOpen(true);
     }
 
+    function openEdit(admin) {
+        setEditingId(admin.id || admin._id);
+        setAdmUser(admin.username);
+        setAdmPass('');
+        setFormError('');
+        setModalOpen(true);
+    }
+
     async function handleSubmit() {
-        if (!admUser.trim() || !admPass.trim()) {
-            setFormError('Please fill in all fields'); return;
+        if (!admUser.trim()) {
+            setFormError('Username is required'); return;
+        }
+        if (!editingId && !admPass.trim()) {
+            setFormError('Password is required'); return;
         }
         setFormError(''); setLoading(true);
         try {
-            await api('POST', '/api/admins', {
-                username: admUser.trim(),
-                password: admPass.trim()
-            }, token, onLogout);
-            showToast('New administrator created successfully');
+            if (editingId) {
+                const body = { username: admUser.trim() };
+                if (admPass.trim()) body.password = admPass.trim();
+                await api('PUT', `/api/admins/${editingId}`, body, token, onLogout);
+                showToast('Administrator updated successfully');
+            } else {
+                await api('POST', '/api/admins', {
+                    username: admUser.trim(),
+                    password: admPass.trim()
+                }, token, onLogout);
+                showToast('New administrator created successfully');
+            }
             setModalOpen(false);
             loadAdmins();
         } catch (err) {
@@ -123,7 +143,25 @@ export default function AdminAdmins({ token, onLogout }) {
                                     <td className="td-m" style={{ fontFamily: 'var(--fm)', fontSize: '12px', color: 'var(--gray)' }}>
                                         {new Date(admin.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                     </td>
-                                    <td style={{ textAlign: 'right' }}>
+                                    <td style={{ textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                        <button
+                                            onClick={() => openEdit(admin)}
+                                            title="Edit Admin"
+                                            style={{
+                                                color: 'var(--primary)',
+                                                background: 'transparent',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                padding: '6px',
+                                                opacity: 0.6,
+                                                transition: 'all 0.2s',
+                                                borderRadius: '6px'
+                                            }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.opacity = 0.6; e.currentTarget.style.background = 'transparent'; }}
+                                        >
+                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                        </button>
                                         <button
                                             className="btn-action-delete"
                                             onClick={() => handleDeleteClick(admin)}
@@ -156,12 +194,12 @@ export default function AdminAdmins({ token, onLogout }) {
                 </div>
             )}
 
-            {/* Create Admin Modal */}
+            {/* Create / Edit Admin Modal */}
             <Modal open={modalOpen} onClose={() => setModalOpen(false)} style={{ maxWidth: '440px' }}>
                 <div className="modal-hd">
                     <div>
-                        <div className="modal-title">Create Admin Account</div>
-                        <div className="modal-sub">Set up login credentials for a new system administrator</div>
+                        <div className="modal-title">{editingId ? 'Edit Admin Account' : 'Create Admin Account'}</div>
+                        <div className="modal-sub">{editingId ? 'Update login credentials for this system administrator' : 'Set up login credentials for a new system administrator'}</div>
                     </div>
                     <button className="modal-close" onClick={() => setModalOpen(false)}>×</button>
                 </div>
@@ -170,8 +208,10 @@ export default function AdminAdmins({ token, onLogout }) {
                     <input className="f-input" type="text" placeholder="e.g. admin.boss" value={admUser} onChange={(e) => setAdmUser(e.target.value)} autoComplete="off" />
                 </div>
                 <div className="f-group">
-                    <label className="f-label">Password</label>
-                    <input className="f-input" type="password" placeholder="••••••••" value={admPass} onChange={(e) => setAdmPass(e.target.value)} />
+                    <label className="f-label">
+                        Password {editingId && <span style={{ fontSize: '11px', color: 'var(--gray)', fontWeight: 400 }}>(Leave blank to keep current)</span>}
+                    </label>
+                    <input className="f-input" type="password" placeholder={editingId ? '••••••••' : 'Enter password'} value={admPass} onChange={(e) => setAdmPass(e.target.value)} />
                 </div>
                 {formError && (
                     <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '13px', fontFamily: 'var(--fm)' }}>
@@ -180,7 +220,7 @@ export default function AdminAdmins({ token, onLogout }) {
                 )}
                 <div className="modal-actions">
                     <button className="btn-submit" onClick={handleSubmit} disabled={loading}>
-                        {loading ? 'Creating...' : 'Create Admin'}
+                        {loading ? 'Saving...' : editingId ? 'Save Changes' : 'Create Admin'}
                     </button>
                     <button className="btn-cancel" onClick={() => setModalOpen(false)}>Cancel</button>
                 </div>

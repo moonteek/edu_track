@@ -12,7 +12,7 @@ const schema = new mongoose.Schema({
   level: { type: Number, required: true, min: 1 },
   doneInLevel: { type: Number, default: 0, min: 0 },
   days: { type: String, enum: ['Every Day', 'Odd Days', 'Even Days'], default: 'Every Day' },
-  autoProgress: { type: Boolean, default: false },
+  autoProgress: { type: Boolean, default: true },
   archived: { type: Boolean, default: false },
   archivedAt: { type: Date, default: null },
 }, {

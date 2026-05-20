@@ -243,6 +243,25 @@ app.delete('/api/admins/:id', auth, adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.put('/api/admins/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const admin = await Admin.findById(req.params.id);
+    if (!admin) return res.status(404).json({ error: 'Admin not found' });
+    
+    const { username, password } = req.body;
+    if (username) {
+      const existing = await Admin.findOne({ username, _id: { $ne: req.params.id } });
+      if (existing) return res.status(409).json({ error: 'Username already taken' });
+      admin.username = username;
+    }
+    if (password) {
+      admin.hash = bcrypt.hashSync(password, SALT);
+    }
+    await admin.save();
+    res.json(admin.toJSON());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/groups', auth, async (req, res) => {
   try {
     const showArchived = req.query.archived === 'true';
@@ -278,7 +297,7 @@ app.put('/api/groups/:id/unarchive', auth, async (req, res) => {
 
 app.post('/api/groups', auth, async (req, res) => {
   try {
-    let { tid, group, lang, startTime, endTime, start, exam, students, level, doneInLevel, days, autoProgress } = req.body;
+    let { tid, group, lang, startTime, endTime, start, exam, students, level, doneInLevel, days } = req.body;
     if (req.user.role === 'teacher') tid = req.user.tid;
     if (!group || !lang || !startTime || !endTime || !start || !exam || !students || !level || !tid) return res.status(400).json({ error: 'All fields required' });
     if (!validLangs.includes(lang)) return res.status(400).json({ error: 'Invalid lang' });
@@ -292,7 +311,7 @@ app.post('/api/groups', auth, async (req, res) => {
 
     if ((await Group.countDocuments({ tid })) >= 10) return res.status(400).json({ error: 'A teacher cannot have more than 10 groups' });
 
-    const g = await Group.create({ tid, group, lang, startTime, endTime, start, exam, students: +students, level, doneInLevel, days: days || 'Every Day', autoProgress: !!autoProgress });
+    const g = await Group.create({ tid, group, lang, startTime, endTime, start, exam, students: +students, level, doneInLevel, days: days || 'Every Day', autoProgress: true });
     res.status(201).json(g.toJSON());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -304,7 +323,8 @@ app.put('/api/groups/:id', auth, async (req, res) => {
     if (req.user.role === 'teacher' && g.tid !== req.user.tid) return res.status(403).json({ error: 'Forbidden' });
     if (req.body.lang && !validLangs.includes(req.body.lang)) return res.status(400).json({ error: 'Invalid lang' });
     if (req.body.students != null && +req.body.students > 25) return res.status(400).json({ error: 'A group cannot have more than 25 students' });
-    for (const f of ['group', 'lang', 'startTime', 'endTime', 'start', 'exam', 'students', 'level', 'doneInLevel', 'days', 'autoProgress']) if (req.body[f] != null) g[f] = req.body[f];
+    for (const f of ['group', 'lang', 'startTime', 'endTime', 'start', 'exam', 'students', 'level', 'doneInLevel', 'days']) if (req.body[f] != null) g[f] = req.body[f];
+    g.autoProgress = true;
     await g.save(); res.json(g.toJSON());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
