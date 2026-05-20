@@ -1,12 +1,26 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct, tagCls, MODULES } from '../constants';
+import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 import TeacherCard from '../components/TeacherCard';
 import GroupRow from '../components/GroupRow';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
+
+const DAYS_OPTIONS = ['Odd Days', 'Even Days', 'Every Day'];
+
+function generateTimeSlots() {
+    const slots = [];
+    for (let h = 8; h <= 19; h++) {
+        slots.push(`${String(h).padStart(2, '0')}:00`);
+        slots.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    slots.push('20:00');
+    return slots;
+}
+
+const TIME_SLOTS = generateTimeSlots();
 
 export default function AdminTeachers({ token, onLogout }) {
     const [teachers, setTeachers] = useState(null);
@@ -36,11 +50,131 @@ export default function AdminTeachers({ token, onLogout }) {
     const [scheduleOpen, setScheduleOpen] = useState(false);
     const [scheduleTeacher, setScheduleTeacher] = useState(null);
 
+    // Group creation modal state
+    const [groupModalOpen, setGroupModalOpen] = useState(false);
+    const [groupTeacher, setGroupTeacher] = useState(null);
+    const [gForm, setGForm] = useState({
+        group: '',
+        lang: '',
+        level: 1,
+        doneInLevel: 0,
+        startTime: '',
+        endTime: '',
+        days: 'Odd Days',
+        start: '',
+        exam: '',
+        students: '',
+    });
+    const [gFormLoading, setGFormLoading] = useState(false);
+    const [gFormError, setGFormError] = useState('');
+
     useEffect(() => { loadData(); }, []);
 
     function openSchedule(teacher) {
         setScheduleTeacher(teacher);
         setScheduleOpen(true);
+    }
+
+    async function handleToggleAvailability(dayType, slot, currentStatus) {
+        if (!scheduleTeacher) return;
+        const nextStatus = currentStatus === 'Unset' ? 'Free' : currentStatus === 'Free' ? 'Busy' : 'Unset';
+        
+        const currentAvail = scheduleTeacher.availability || { oddDays: {}, evenDays: {} };
+        const updatedOdd = { ...(currentAvail.oddDays || {}) };
+        const updatedEven = { ...(currentAvail.evenDays || {}) };
+        
+        if (dayType === 'odd') {
+            if (nextStatus === 'Unset') delete updatedOdd[slot];
+            else updatedOdd[slot] = nextStatus;
+        } else {
+            if (nextStatus === 'Unset') delete updatedEven[slot];
+            else updatedEven[slot] = nextStatus;
+        }
+        
+        const nextAvail = { oddDays: updatedOdd, evenDays: updatedEven };
+        
+        try {
+            await api('PUT', '/api/teachers/' + scheduleTeacher.id, {
+                availability: nextAvail
+            }, token, onLogout);
+            
+            setTeachers(prev => prev.map(t => t.id === scheduleTeacher.id ? { ...t, availability: nextAvail } : t));
+            setScheduleTeacher(prev => ({ ...prev, availability: nextAvail }));
+            showToast(`Schedule slot updated to ${nextStatus}`);
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    function openCreateGroupForTeacher(teacher) {
+        setGroupTeacher(teacher);
+        setGForm({
+            group: '',
+            lang: '',
+            level: 1,
+            doneInLevel: 0,
+            startTime: '',
+            endTime: '',
+            days: 'Odd Days',
+            start: '',
+            exam: '',
+            students: '',
+        });
+        setGFormError('');
+        setGroupModalOpen(true);
+    }
+
+    function setGField(key, val) {
+        setGForm(f => {
+            const next = { ...f, [key]: val };
+            if ((key === 'start' || key === 'days') && next.start && next.days) {
+                try { next.exam = calcExamDate(next.start, next.days); } catch { }
+            }
+            if (key === 'startTime' || key === 'lang') {
+                const isKids = next.lang === 'Python (Kids)' || next.lang === 'Scratch';
+                const dur = isKids ? 90 : 120;
+                if (next.startTime) {
+                    const [h, m] = next.startTime.split(':').map(Number);
+                    const total = h * 60 + m + dur;
+                    next.endTime = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+                }
+            }
+            if (key === 'lang') { next.level = 1; next.doneInLevel = 0; }
+            return next;
+        });
+    }
+
+    async function handleGroupSubmit() {
+        const { group, lang, level, doneInLevel, startTime, endTime, days, start, exam, students } = gForm;
+        if (!group.trim() || !lang || !startTime || !endTime || !start || !exam || !students) {
+            setGFormError('Please fill in all required fields.');
+            return;
+        }
+        setGFormError('');
+        setGFormLoading(true);
+        try {
+            const body = {
+                tid: groupTeacher.id,
+                group: group.trim(),
+                lang,
+                level: +level,
+                doneInLevel: +(doneInLevel || 0),
+                startTime,
+                endTime,
+                days,
+                start,
+                exam,
+                students: +students,
+            };
+            await api('POST', '/api/groups', body, token, onLogout);
+            showToast('Group created successfully');
+            setGroupModalOpen(false);
+            loadData();
+        } catch (err) {
+            setGFormError(err.message);
+        } finally {
+            setGFormLoading(false);
+        }
     }
 
     async function loadData() {
@@ -205,6 +339,7 @@ export default function AdminTeachers({ token, onLogout }) {
                         key={t.id} teacher={t} index={i}
                         groups={(allGroups || []).filter((g) => g.tid === t.id)}
                         onEdit={openEdit} onDelete={handleDeleteClick} onViewSchedule={openSchedule}
+                        onAddGroup={openCreateGroupForTeacher}
                     />
                 ))}
             </div>
@@ -235,6 +370,9 @@ export default function AdminTeachers({ token, onLogout }) {
                                 </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                <button className="add-btn" onClick={() => openCreateGroupForTeacher(t)} style={{ margin: 0, padding: '6px 14px', fontSize: '12px', height: '32px' }}>
+                                    <span className="add-icon">+</span>Add Group
+                                </button>
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                     {langBreak.map((l) => <span key={l} className={'tag tag-' + tagCls(l)} style={{ fontSize: '10px' }}>{l}</span>)}
                                 </div>
@@ -332,7 +470,7 @@ export default function AdminTeachers({ token, onLogout }) {
                     <div className="modal-hd">
                         <div>
                             <div className="modal-title">{scheduleTeacher.name}'s Schedule</div>
-                            <div className="modal-sub">Odd and Even Days Availability</div>
+                            <div className="modal-sub">Click on any slot (except active lessons) to toggle its availability: Unset ➔ Free ➔ Busy</div>
                         </div>
                         <button className="modal-close" onClick={() => setScheduleOpen(false)}>×</button>
                     </div>
@@ -383,28 +521,193 @@ export default function AdminTeachers({ token, onLogout }) {
                                 <div className="schedule-col">
                                     <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>Odd Days</div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {slots.map(slot => (
-                                            <div key={slot} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--darker)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                                                <span style={{ fontSize: '12px', fontFamily: 'var(--fm)', color: 'var(--gray)' }}>{slot}</span>
-                                                {renderStatus(getStatus('odd', slot))}
-                                            </div>
-                                        ))}
+                                        {slots.map(slot => {
+                                            const status = getStatus('odd', slot);
+                                            const isInteractive = status !== 'Lesson';
+                                            return (
+                                                <div 
+                                                    key={slot} 
+                                                    onClick={() => isInteractive && handleToggleAvailability('odd', slot, status)}
+                                                    style={{ 
+                                                        display: 'flex', 
+                                                        justifyContent: 'space-between', 
+                                                        alignItems: 'center',
+                                                        padding: '8px 12px', 
+                                                        background: 'var(--darker)', 
+                                                        borderRadius: '6px', 
+                                                        border: '1px solid var(--border)',
+                                                        cursor: isInteractive ? 'pointer' : 'default',
+                                                        transition: 'all 0.2s',
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        if (isInteractive) {
+                                                            e.currentTarget.style.borderColor = 'var(--yellow)';
+                                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                                                        }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        if (isInteractive) {
+                                                            e.currentTarget.style.borderColor = 'var(--border)';
+                                                            e.currentTarget.style.background = 'var(--darker)';
+                                                        }
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '12px', fontFamily: 'var(--fm)', color: 'var(--gray)' }}>{slot}</span>
+                                                    {renderStatus(status)}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                                 <div className="schedule-col">
                                     <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--white)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>Even Days</div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {slots.map(slot => (
-                                            <div key={slot} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--darker)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                                                <span style={{ fontSize: '12px', fontFamily: 'var(--fm)', color: 'var(--gray)' }}>{slot}</span>
-                                                {renderStatus(getStatus('even', slot))}
-                                            </div>
-                                        ))}
+                                        {slots.map(slot => {
+                                            const status = getStatus('even', slot);
+                                            const isInteractive = status !== 'Lesson';
+                                            return (
+                                                <div 
+                                                    key={slot} 
+                                                    onClick={() => isInteractive && handleToggleAvailability('even', slot, status)}
+                                                    style={{ 
+                                                        display: 'flex', 
+                                                        justifyContent: 'space-between', 
+                                                        alignItems: 'center',
+                                                        padding: '8px 12px', 
+                                                        background: 'var(--darker)', 
+                                                        borderRadius: '6px', 
+                                                        border: '1px solid var(--border)',
+                                                        cursor: isInteractive ? 'pointer' : 'default',
+                                                        transition: 'all 0.2s',
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        if (isInteractive) {
+                                                            e.currentTarget.style.borderColor = 'var(--yellow)';
+                                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                                                        }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        if (isInteractive) {
+                                                            e.currentTarget.style.borderColor = 'var(--border)';
+                                                            e.currentTarget.style.background = 'var(--darker)';
+                                                        }
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '12px', fontFamily: 'var(--fm)', color: 'var(--gray)' }}>{slot}</span>
+                                                    {renderStatus(status)}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
                         );
                     })()}
+                </Modal>
+            )}
+
+            {/* Add Group Modal */}
+            {groupTeacher && (
+                <Modal open={groupModalOpen} onClose={() => setGroupModalOpen(false)} className="" style={{ maxWidth: '560px' }}>
+                    <div className="modal-hd">
+                        <div>
+                            <div className="modal-title">Add Group to {groupTeacher.name}</div>
+                            <div className="modal-sub">Create a new group assigned to this teacher. Available courses are filtered by specializations.</div>
+                        </div>
+                        <button className="modal-close" onClick={() => setGroupModalOpen(false)}>×</button>
+                    </div>
+
+                    <div className="f-group">
+                        <label className="f-label">Teacher</label>
+                        <input className="f-input" type="text" value={groupTeacher.name} readOnly style={{ opacity: 0.6, cursor: 'default' }} />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Group Name <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <input className="f-input" type="text" placeholder="e.g. JS-101" value={gForm.group} onChange={e => setGField('group', e.target.value)} />
+                        </div>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Subject <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <select className="f-select" value={gForm.lang} onChange={e => setGField('lang', e.target.value)}>
+                                <option value="">Select subject</option>
+                                {(Array.isArray(groupTeacher.subject) ? groupTeacher.subject : [groupTeacher.subject]).map(cat => {
+                                    const courses = MODULES[cat] || [];
+                                    return (
+                                        <optgroup key={cat} label={cat}>
+                                            {courses.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </optgroup>
+                                    );
+                                })}
+                            </select>
+                        </div>
+                    </div>
+
+                    {gForm.lang && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                            <div className="f-group" style={{ margin: 0 }}>
+                                <label className="f-label">Level (1 – {PC[gForm.lang]?.levels || 1})</label>
+                                <input className="f-input" type="number" min="1" max={PC[gForm.lang]?.levels || 1} value={gForm.level}
+                                    onChange={e => setGField('level', Math.min(PC[gForm.lang]?.levels || 1, Math.max(1, +e.target.value)))} />
+                            </div>
+                            <div className="f-group" style={{ margin: 0 }}>
+                                <label className="f-label">Done in Level (0 – 13)</label>
+                                <input className="f-input" type="number" min="0" max="13" value={gForm.doneInLevel}
+                                    onChange={e => setGField('doneInLevel', Math.min(13, Math.max(0, +e.target.value)))} />
+                            </div>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Start Time <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <select className="f-select" value={gForm.startTime} onChange={e => setGField('startTime', e.target.value)}>
+                                <option value="">–</option>
+                                {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </div>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">End Time</label>
+                            <input className="f-input" type="text" value={gForm.endTime} readOnly
+                                style={{ opacity: 0.6, cursor: 'default' }} placeholder="Auto-calculated" />
+                        </div>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Days <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <select className="f-select" value={gForm.days} onChange={e => setGField('days', e.target.value)}>
+                                {DAYS_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Start Date <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <input className="f-input" type="date" value={gForm.start} onChange={e => setGField('start', e.target.value)} />
+                        </div>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Exam Date</label>
+                            <input className="f-input" type="date" value={gForm.exam} onChange={e => setGField('exam', e.target.value)}
+                                style={{ opacity: gForm.start ? 1 : 0.5 }} />
+                        </div>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Students <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <input className="f-input" type="number" min="1" max="25" placeholder="1–25" value={gForm.students}
+                                onChange={e => setGField('students', e.target.value)} />
+                        </div>
+                    </div>
+
+                    {gFormError && (
+                        <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '13px', fontFamily: 'var(--fm)' }}>
+                            {gFormError}
+                        </div>
+                    )}
+
+                    <div className="modal-actions">
+                        <button className="btn-submit" onClick={handleGroupSubmit} disabled={gFormLoading}>
+                            {gFormLoading ? 'Creating...' : 'Create Group'}
+                        </button>
+                        <button className="btn-cancel" onClick={() => setGroupModalOpen(false)}>Cancel</button>
+                    </div>
                 </Modal>
             )}
         </div>

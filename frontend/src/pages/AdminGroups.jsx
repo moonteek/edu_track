@@ -315,8 +315,38 @@ export default function AdminGroups({ token, onLogout }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <span className="slabel" style={{ margin: 0 }}>Groups by Teacher</span>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className={'filter-btn' + (!showArchived ? ' active' : '')} onClick={() => setShowArchived(false)} style={{ padding: '4px 12px' }}>Active</button>
-                        <button className={'filter-btn' + (showArchived ? ' active' : '')} onClick={() => setShowArchived(true)} style={{ padding: '4px 12px' }}>📦 Archived</button>
+                        <button
+                            className={'filter-btn' + (!showArchived ? ' active' : '')}
+                            onClick={() => setShowArchived(false)}
+                            style={{
+                                padding: '4px 12px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
+                        >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                            Active
+                        </button>
+                        <button
+                            className={'filter-btn' + (showArchived ? ' active' : '')}
+                            onClick={() => setShowArchived(true)}
+                            style={{
+                                padding: '4px 12px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
+                        >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                                <rect x="1" y="3" width="22" height="5"></rect>
+                                <line x1="10" y1="12" x2="14" y2="12"></line>
+                            </svg>
+                            Archived
+                        </button>
                     </div>
                 </div>
                 <button

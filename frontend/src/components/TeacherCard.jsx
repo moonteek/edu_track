@@ -1,29 +1,10 @@
 import { PC, LPL, totalDone, totalLessons, pct, tagCls } from '../constants';
 
-function fmtLastLogin(date) {
-    if (!date) return 'Never logged in';
-    const d = new Date(date);
-    const now = new Date();
-    const diffMs = now - d;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHrs = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    if (diffMins < 2) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHrs < 24) return `${diffHrs}h ago`;
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 30) return `${diffDays} days ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
-    return `${Math.floor(diffDays / 365)}y ago`;
-}
-
-export default function TeacherCard({ teacher, groups, index = 0, onEdit, onDelete, onViewSchedule }) {
+export default function TeacherCard({ teacher, groups, index = 0, onEdit, onDelete, onViewSchedule, onAddGroup }) {
     const ts = groups.reduce((a, g) => a + g.students, 0);
     const ap = groups.length
         ? Math.round(groups.reduce((a, g) => a + pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang)), 0) / groups.length)
         : 0;
-
-    const isInactive = !teacher.lastLogin || (new Date() - new Date(teacher.lastLogin)) > 14 * 86400000;
 
     return (
         <div className="teacher-card" style={{ animationDelay: index * 0.05 + 's' }}>
@@ -44,14 +25,6 @@ export default function TeacherCard({ teacher, groups, index = 0, onEdit, onDele
                     <div className="tc-stat"><div className="tc-stat-num">{groups.length}</div><div className="tc-stat-lbl">Groups</div></div>
                     <div className="tc-stat"><div className="tc-stat-num">{ts}</div><div className="tc-stat-lbl">Students</div></div>
                     <div className="tc-stat"><div className="tc-stat-num">{ap}%</div><div className="tc-stat-lbl">Avg Prog</div></div>
-                </div>
-
-                {/* Last Login */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px', padding: '6px 10px', borderRadius: '8px', background: isInactive ? 'rgba(244,67,54,0.07)' : 'rgba(255,255,255,0.04)', border: '1px solid ' + (isInactive ? 'rgba(244,67,54,0.2)' : 'var(--border)') }}>
-                    <span style={{ fontSize: '11px' }}>{isInactive ? '🔴' : '🟢'}</span>
-                    <span style={{ fontFamily: 'var(--fm)', fontSize: '11px', color: isInactive ? '#ef9a9a' : 'var(--gray)' }}>
-                        Last login: <strong style={{ color: isInactive ? '#ef9a9a' : 'var(--gl)' }}>{fmtLastLogin(teacher.lastLogin)}</strong>
-                    </span>
                 </div>
 
                 <div style={{ fontSize: '10px', color: 'var(--gray)', fontFamily: 'var(--fm)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>Groups</div>
@@ -77,6 +50,7 @@ export default function TeacherCard({ teacher, groups, index = 0, onEdit, onDele
             </div>
             <div className="tc-actions">
                 {onViewSchedule && <button className="btn-sm" style={{ background: 'var(--darker)', color: 'var(--white)' }} onClick={() => onViewSchedule(teacher)}>Schedule</button>}
+                {onAddGroup && <button className="btn-sm" style={{ background: 'var(--yellow)', color: 'var(--black)', fontWeight: 600 }} onClick={() => onAddGroup(teacher)}>+ Group</button>}
                 <button className="btn-sm btn-sm-yellow" onClick={() => onEdit(teacher)}>Edit</button>
                 <button className="btn-sm btn-sm-red" onClick={() => onDelete(teacher, groups.length)}>Delete</button>
             </div>

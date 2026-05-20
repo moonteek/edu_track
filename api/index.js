@@ -10,8 +10,16 @@ const seed = require('../lib/seed');
 
 const app = express();
 
+const rawFrontendUrl = (process.env.FRONTEND_URL || '*').trim();
+const allowedOrigins = rawFrontendUrl === '*'
+  ? '*'
+  : rawFrontendUrl.split(',').flatMap(url => {
+      const trimmed = url.trim();
+      return [trimmed, trimmed.replace(/\/$/, '')];
+    });
+
 app.use(cors({
-  origin: (process.env.FRONTEND_URL || '*').trim(),
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -172,6 +180,9 @@ app.put('/api/teachers/:id', auth, adminOnly, async (req, res) => {
     if (username && username !== teacher.username && await Teacher.findOne({ username })) return res.status(409).json({ error: 'Username already taken' });
     if (name) teacher.name = name; if (username) teacher.username = username;
     if (subject && subject.length) teacher.subject = subject; if (password) teacher.hash = bcrypt.hashSync(password, SALT);
+    if (req.body.availability) {
+      teacher.availability = req.body.availability;
+    }
     await teacher.save(); res.json(teacher.toJSON());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

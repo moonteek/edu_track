@@ -57,22 +57,43 @@ export default function GroupRow({ group, onEdit, onDelete, onArchive, selected,
                     {onArchive && (
                         <button
                             onClick={() => onArchive(group)}
-                            title={group.archived ? "Unarchive Group" : "Archive Group"}
+                            title={group.archived ? "Restore Group" : "Archive Group"}
                             style={{
                                 color: group.archived ? 'var(--yellow)' : 'var(--gray)',
                                 background: 'transparent',
                                 border: 'none',
                                 cursor: 'pointer',
                                 padding: '6px',
-                                opacity: 0.7,
-                                transition: 'opacity 0.2s',
+                                opacity: 0.6,
+                                transition: 'opacity 0.2s, background 0.2s',
                                 borderRadius: '6px',
-                                fontSize: '15px'
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.opacity = 0.7; }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.opacity = 1;
+                                e.currentTarget.style.background = group.archived ? 'rgba(245,197,24,0.1)' : 'rgba(255,255,255,0.08)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.opacity = 0.6;
+                                e.currentTarget.style.background = 'transparent';
+                            }}
                         >
-                            {group.archived ? '📤' : '📦'}
+                            {group.archived ? (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                                    <rect x="1" y="3" width="22" height="5"></rect>
+                                    <polyline points="10 12 12 10 14 12"></polyline>
+                                    <line x1="12" y1="16" x2="12" y2="10"></line>
+                                </svg>
+                            ) : (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                                    <rect x="1" y="3" width="22" height="5"></rect>
+                                    <line x1="10" y1="12" x2="14" y2="12"></line>
+                                </svg>
+                            )}
                         </button>
                     )}
                     {onDelete && (

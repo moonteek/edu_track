@@ -103,26 +103,28 @@ body {
     border-radius: 50%;
     background: var(--yellow);
     animation: lp-float linear infinite;
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
 }
 
 @keyframes lp-float {
     0% {
-        transform: translateY(0) translateX(0) scale(1);
+        transform: translate3d(0, 0, 0) scale(1);
         opacity: .15
     }
 
     33% {
-        transform: translateY(-30px) translateX(15px) scale(1.1);
+        transform: translate3d(15px, -30px, 0) scale(1.1);
         opacity: .22
     }
 
     66% {
-        transform: translateY(-18px) translateX(-10px) scale(.9);
+        transform: translate3d(-10px, -18px, 0) scale(.9);
         opacity: .12
     }
 
     100% {
-        transform: translateY(0) translateX(0) scale(1);
+        transform: translate3d(0, 0, 0) scale(1);
         opacity: .15
     }
 }
@@ -136,6 +138,9 @@ body {
     z-index: 0;
     animation: lp-aurora-drift 20s ease-in-out infinite alternate;
     opacity: 0.6;
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 
 .lp-blob-1 {
@@ -167,19 +172,19 @@ body {
 
 @keyframes lp-aurora-drift {
     0% {
-        transform: translate(0, 0) scale(1) rotate(0deg);
+        transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
     }
 
     33% {
-        transform: translate(5vw, -5vh) scale(1.1) rotate(5deg);
+        transform: translate3d(5vw, -5vh, 0) scale(1.1) rotate(5deg);
     }
 
     66% {
-        transform: translate(-3vw, 4vh) scale(0.9) rotate(-3deg);
+        transform: translate3d(-3vw, 4vh, 0) scale(0.9) rotate(-3deg);
     }
 
     100% {
-        transform: translate(0, 0) scale(1.05) rotate(2deg);
+        transform: translate3d(0, 0, 0) scale(1.05, 1.05, 1) rotate(2deg);
     }
 }
 
