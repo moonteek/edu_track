@@ -4,9 +4,9 @@ import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 
 // ─── Excel SpreadsheetML builder (no library, no binary, Excel-native XML) ───
-function buildExcel(sheets) {
+function buildExcelXml(sheets) {
     // sheets: [{ name: string, rows: string[][] }]
-    // Produces Excel 2003 SpreadsheetML — a plain XML that Excel opens natively.
+    // Returns plain XML string — Excel 2003 SpreadsheetML format.
     const esc = (s) => String(s ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -40,7 +40,7 @@ function buildExcel(sheets) {
     }
 
     xml += '</Workbook>';
-    return new Blob(['\uFEFF' + xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    return xml;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -166,17 +166,17 @@ export default function AdminSchedule({ token }) {
             return;
         }
 
-        const blob = buildExcel(sheets);
-        const url = URL.createObjectURL(blob);
+        const xml = buildExcelXml(sheets);
+        // Use data: URI — works under Vercel CSP (blob URLs strip the download filename)
+        const dataUri = 'data:application/vnd.ms-excel;charset=utf-8,' + encodeURIComponent('\uFEFF' + xml);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = dataUri;
         const date = new Date().toISOString().slice(0, 10);
         const dayTag = dayView === 'odd' ? 'OddDays' : 'EvenDays';
         a.download = `EduTrack_Schedule_${dayTag}_${date}.xls`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
         showToast('Schedule exported successfully');
     }
     // ─────────────────────────────────────────────────────────────────────────
