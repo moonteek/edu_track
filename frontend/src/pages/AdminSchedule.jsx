@@ -3,6 +3,130 @@ import { api } from '../api';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 
+// ─── Lightweight XLSX builder (no library required) ──────────────────────────
+function buildXlsx(sheets) {
+    // sheets: [{ name, rows: [[cell,...], ...] }]
+    // Generates a valid .xlsx (Office Open XML) Blob entirely in JS
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const sharedStrings = [];
+    const ssMap = {};
+    function si(val) {
+        const s = String(val ?? '');
+        if (s in ssMap) return ssMap[s];
+        const idx = sharedStrings.length;
+        sharedStrings.push(s);
+        ssMap[s] = idx;
+        return idx;
+    }
+
+    const colLetters = (n) => {
+        let s = '';
+        while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
+        return s;
+    };
+
+    const sheetXmls = sheets.map(({ name, rows }) => {
+        let xml = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`;
+        rows.forEach((row, ri) => {
+            xml += `<row r="${ri + 1}">`;
+            row.forEach((cell, ci) => {
+                const ref = `${colLetters(ci)}${ri + 1}`;
+                const idx = si(cell);
+                xml += `<c r="${ref}" t="s"><v>${idx}</v></c>`;
+            });
+            xml += `</row>`;
+        });
+        xml += `</sheetData></worksheet>`;
+        return { name: esc(name), xml };
+    });
+
+    const ssXml = `<?xml version="1.0" encoding="UTF-8"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sharedStrings.length}" uniqueCount="${sharedStrings.length}">${sharedStrings.map(s => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join('')}</sst>`;
+
+    const wbXml = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheetXmls.map((s, i) => `<sheet name="${s.name}" sheetId="${i + 1}" r:id="rId${i + 2}"/>`).join('')}</sheets></workbook>`;
+
+    const wbRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>${sheetXmls.map((_, i) => `<Relationship Id="rId${i + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}</Relationships>`;
+
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>${sheetXmls.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`;
+
+    const pkgRels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+
+    // Build ZIP manually (local file method – stored, no compression)
+    function strToBytes(str) {
+        const bytes = [];
+        for (let i = 0; i < str.length; i++) {
+            const c = str.charCodeAt(i);
+            if (c < 128) bytes.push(c);
+            else if (c < 2048) { bytes.push(0xC0 | (c >> 6)); bytes.push(0x80 | (c & 63)); }
+            else { bytes.push(0xE0 | (c >> 12)); bytes.push(0x80 | ((c >> 6) & 63)); bytes.push(0x80 | (c & 63)); }
+        }
+        return new Uint8Array(bytes);
+    }
+
+    function crc32(data) {
+        const table = new Uint32Array(256);
+        for (let i = 0; i < 256; i++) {
+            let c = i;
+            for (let j = 0; j < 8; j++) c = (c & 1) ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+            table[i] = c;
+        }
+        let crc = 0xFFFFFFFF;
+        for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function u16(n) { return [n & 0xFF, (n >> 8) & 0xFF]; }
+    function u32(n) { return [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF]; }
+
+    const entries = [
+        { name: '[Content_Types].xml', data: strToBytes(contentTypes) },
+        { name: '_rels/.rels', data: strToBytes(pkgRels) },
+        { name: 'xl/workbook.xml', data: strToBytes(wbXml) },
+        { name: 'xl/_rels/workbook.xml.rels', data: strToBytes(wbRels) },
+        { name: 'xl/sharedStrings.xml', data: strToBytes(ssXml) },
+        ...sheetXmls.map((s, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: strToBytes(s.xml) })),
+    ];
+
+    const parts = [];
+    const central = [];
+    let offset = 0;
+
+    for (const entry of entries) {
+        const name = strToBytes(entry.name);
+        const crc = crc32(entry.data);
+        const size = entry.data.length;
+        const local = new Uint8Array([
+            0x50, 0x4B, 0x03, 0x04, 20, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, ...u32(crc), ...u32(size), ...u32(size),
+            ...u16(name.length), 0, 0, ...name, ...entry.data,
+        ]);
+        const cent = new Uint8Array([
+            0x50, 0x4B, 0x01, 0x02, 20, 0, 20, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, ...u32(crc), ...u32(size), ...u32(size),
+            ...u16(name.length), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...u32(offset), ...name,
+        ]);
+        parts.push(local);
+        central.push(cent);
+        offset += local.length;
+    }
+
+    const centralSize = central.reduce((a, b) => a + b.length, 0);
+    const eocd = new Uint8Array([
+        0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0,
+        ...u16(entries.length), ...u16(entries.length),
+        ...u32(centralSize), ...u32(offset), 0, 0,
+    ]);
+
+    const all = [...parts, ...central, eocd];
+    const total = all.reduce((a, b) => a + b.length, 0);
+    const out = new Uint8Array(total);
+    let pos = 0;
+    for (const part of all) { out.set(part, pos); pos += part.length; }
+
+    return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function AdminSchedule({ token }) {
     const [teachers, setTeachers] = useState(null);
     const [groups, setGroups] = useState(null);
@@ -57,7 +181,6 @@ export default function AdminSchedule({ token }) {
             currentMin = nextMin;
         }
 
-        // Filter out slots starting at 12 or 13 (12pm-1pm ignore per user request)
         return slots.filter(s => {
             const startH = parseInt(s.split(':')[0]);
             return startH !== 12 && startH !== 13;
@@ -70,6 +193,77 @@ export default function AdminSchedule({ token }) {
         const toMins = t => { const [h, m] = t.split(':'); return parseInt(h) * 60 + parseInt(m); };
         return toMins(s1) < toMins(gEnd) && toMins(gStart) < toMins(e1);
     };
+
+    // ── Excel Export ──────────────────────────────────────────────────────────
+    function handleDownloadExcel() {
+        if (!teachers || !groups) return;
+        const dayLabel = dayView === 'odd' ? 'Odd Days (Mon, Wed, Fri)' : 'Even Days (Tue, Thu, Sat)';
+        const sheets = [];
+
+        // One sheet per specialization (filtered by current view subject if set)
+        const subjectsToExport = filterSubject === 'All' ? allSubjects : [filterSubject];
+
+        for (const subject of subjectsToExport) {
+            const subjTeachers = groupedTeachers[subject] || [];
+            if (!subjTeachers.length) continue;
+
+            // Collect all unique slots across all teachers in this subject
+            const allSlots = [...new Set(
+                subjTeachers.flatMap(t => {
+                    const subs = Array.isArray(t.subject) ? t.subject : [t.subject];
+                    return generateSlots(subs.every(s => s === 'IT Kids'));
+                })
+            )].sort();
+
+            // Header row
+            const header = ['Teacher', 'Groups Total', ...allSlots];
+            const rows = [
+                [`${subject} — ${dayLabel}`],
+                header,
+            ];
+
+            for (const t of subjTeachers) {
+                const tGroups = groups.filter(g => g.tid === t.id);
+                const targetGroups = tGroups.filter(g =>
+                    g.days === (dayView === 'odd' ? 'Odd Days' : 'Even Days') || g.days === 'Every Day'
+                );
+                const avail = t.availability || { oddDays: {}, evenDays: {} };
+                const dayKey = dayView === 'odd' ? 'oddDays' : 'evenDays';
+
+                const slotCells = allSlots.map(slot => {
+                    const hasLesson = targetGroups.some(g => isOverlapping(slot, g.startTime, g.endTime));
+                    if (hasLesson) {
+                        const grp = targetGroups.find(g => isOverlapping(slot, g.startTime, g.endTime));
+                        return grp ? `Lesson: ${grp.group}` : 'Lesson';
+                    }
+                    return avail[dayKey]?.[slot] || 'Unset';
+                });
+
+                rows.push([t.name, String(tGroups.length), ...slotCells]);
+            }
+
+            // Sheet name max 31 chars (Excel limit)
+            const sheetName = subject.length > 28 ? subject.slice(0, 28) + '...' : subject;
+            sheets.push({ name: sheetName, rows });
+        }
+
+        if (!sheets.length) {
+            showToast('No data to export', true);
+            return;
+        }
+
+        const blob = buildXlsx(sheets);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const date = new Date().toISOString().slice(0, 10);
+        const dayTag = dayView === 'odd' ? 'OddDays' : 'EvenDays';
+        a.download = `EduTrack_Schedule_${dayTag}_${date}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Schedule exported to Excel successfully');
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     if (!teachers || !groups) {
         return <div className="panel-body"><Skeleton /></div>;
@@ -101,6 +295,30 @@ export default function AdminSchedule({ token }) {
                             <option key={subj} value={subj}>{subj}</option>
                         ))}
                     </select>
+
+                    {/* ── Download Button ── */}
+                    <button
+                        onClick={handleDownloadExcel}
+                        title={`Download ${filterSubject === 'All' ? 'all' : filterSubject} schedule as Excel`}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 14px', borderRadius: '8px',
+                            background: 'rgba(76,175,80,0.12)',
+                            border: '1px solid rgba(76,175,80,0.3)',
+                            color: 'var(--green)',
+                            fontSize: '13px', fontWeight: 600, fontFamily: 'var(--fm)',
+                            cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(76,175,80,0.22)'; e.currentTarget.style.borderColor = 'rgba(76,175,80,0.55)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(76,175,80,0.12)'; e.currentTarget.style.borderColor = 'rgba(76,175,80,0.3)'; }}
+                    >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Export Excel
+                    </button>
                 </div>
 
                 <div style={{ display: 'flex', background: 'var(--darker)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px' }}>
@@ -170,7 +388,6 @@ export default function AdminSchedule({ token }) {
                                                 const hasLesson = targetGroups.some(g => isOverlapping(slot, g.startTime, g.endTime));
                                                 let status = avail[dayView === 'odd' ? 'oddDays' : 'evenDays']?.[slot] || 'Unset';
 
-                                                // Find specific group taking this slot to render in the block
                                                 const groupInSlot = hasLesson ? targetGroups.find(g => isOverlapping(slot, g.startTime, g.endTime)) : null;
 
                                                 if (hasLesson) status = 'Lesson';
