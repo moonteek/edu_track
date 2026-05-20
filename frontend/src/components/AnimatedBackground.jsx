@@ -1,13 +1,13 @@
 import React from 'react';
 
-const PARTICLES = Array.from({ length: 22 }, (_, i) => ({
-    left: `${Math.random() * 100}%`,
-    top: `${Math.random() * 100}%`,
-    width: `${2 + Math.random() * 3}px`,
-    height: `${2 + Math.random() * 3}px`,
-    opacity: 0.12 + Math.random() * 0.22,
-    animationDuration: `${6 + Math.random() * 10}s`,
-    animationDelay: `${Math.random() * 8}s`,
+const PARTICLES = Array.from({ length: 10 }, (_, i) => ({
+    left: `${(i * 10.3) % 100}%`,
+    top: `${(i * 17.7) % 100}%`,
+    width: `${2 + (i % 3)}px`,
+    height: `${2 + (i % 3)}px`,
+    opacity: 0.10 + (i % 5) * 0.04,
+    animationDuration: `${8 + (i % 4) * 3}s`,
+    animationDelay: `${(i % 5) * 1.6}s`,
 }));
 
 export default function AnimatedBackground() {
