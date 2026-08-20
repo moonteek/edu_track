@@ -460,6 +460,327 @@ app.get('/api/stats', auth, adminOnly, async (_req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GOOGLE SHEETS LIVE SYNC ENDPOINTS ─────────────────────────
+const SYNC_KEY = process.env.SYNC_KEY || 'edutrack_sync_2026';
+
+function computeElapsedLessons(startDateStr, daysSchedule) {
+  if (!startDateStr) return 0;
+  const start = new Date(startDateStr);
+  start.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (start > today) return 0;
+  let count = 0;
+  const cursor = new Date(start);
+  while (cursor <= today) {
+    const dow = cursor.getDay();
+    if (dow !== 0) {
+      if (daysSchedule === 'Odd Days' && [1, 3, 5].includes(dow)) count++;
+      else if (daysSchedule === 'Even Days' && [2, 4, 6].includes(dow)) count++;
+      else if (daysSchedule === 'Every Day') count++;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+function autoProgressGroup(group) {
+  const elapsed = computeElapsedLessons(group.start, group.days);
+  const maxLevels = PC[group.lang]?.levels || 1;
+  const tl = totalLessons(group.lang);
+  if (elapsed === 0) {
+    return {
+      level: group.level,
+      doneInLevel: group.doneInLevel,
+      totalDone: totalDone(group.lang, group.level, group.doneInLevel),
+    };
+  }
+  const effectiveElapsed = Math.min(tl, elapsed);
+  let remaining = effectiveElapsed;
+  let curLevel = 1;
+  let curDoneInLevel = 0;
+  for (let i = 1; i <= maxLevels; i++) {
+    const lpl = getLessonsInLevel(group.lang, i);
+    if (remaining <= lpl) {
+      curLevel = i;
+      curDoneInLevel = remaining;
+      break;
+    } else {
+      remaining -= lpl;
+      if (i === maxLevels) {
+        curLevel = maxLevels;
+        curDoneInLevel = lpl;
+      }
+    }
+  }
+  return {
+    level: curLevel,
+    doneInLevel: curDoneInLevel,
+    totalDone: effectiveElapsed,
+  };
+}
+
+function escapeCSV(val) {
+  if (val === null || val === undefined) return '""';
+  const str = String(val).replace(/"/g, '""');
+  return `"${str}"`;
+}
+
+function verifySyncKey(req, res, next) {
+  const key = req.query.key || req.headers['x-sync-key'];
+  if (key !== SYNC_KEY) {
+    return res.status(401).send('Unauthorized: Invalid or missing sync key');
+  }
+  next();
+}
+
+app.get('/api/sync/config', auth, adminOnly, (req, res) => {
+  const host = req.get('host');
+  const proto = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+  const baseUrl = `${proto}://${host}`;
+  res.json({
+    syncKey: SYNC_KEY,
+    urls: {
+      students: `${baseUrl}/api/sync/students?key=${SYNC_KEY}`,
+      teachers: `${baseUrl}/api/sync/teachers?key=${SYNC_KEY}`,
+      courses: `${baseUrl}/api/sync/courses?key=${SYNC_KEY}`,
+    }
+  });
+});
+
+app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
+  try {
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    const [groups, teachers] = await Promise.all([
+      Group.find({ archived: { $ne: true } }),
+      Teacher.find(),
+    ]);
+
+    const teacherMap = Object.fromEntries(teachers.map(t => [t._id.toString(), t.name]));
+
+    const headers = [
+      'Group Name',
+      'Teacher',
+      'Subject / Course',
+      'Department / Category',
+      'Current Stage (Subject & Level)',
+      'Current Level',
+      'Max Levels in Course',
+      'Level Progress (Done/Total in Level)',
+      'Total Course Lessons Done',
+      'Total Course Lessons',
+      'Overall Completion Rate (%)',
+      'Schedule Mode',
+      'Time Slot',
+      'Start Date',
+      'Exam Date',
+      'Days Until Exam',
+      'Status'
+    ];
+
+    const rows = groups.map(g => {
+      const isAuto = g.autoProgress === true;
+      const auto = isAuto ? autoProgressGroup(g) : null;
+      const curLevel = isAuto ? auto.level : g.level;
+      const curDoneInLevel = isAuto ? auto.doneInLevel : g.doneInLevel;
+      const done = isAuto ? auto.totalDone : totalDone(g.lang, g.level, g.doneInLevel);
+      const tl = totalLessons(g.lang);
+      const progressPct = tl ? Math.min(100, Math.round((done / tl) * 100)) : 0;
+      const cfg = PC[g.lang] || { levels: 1, category: 'General' };
+      const maxLevelLessons = getLessonsInLevel(g.lang, curLevel);
+
+      const currentStageName = `${g.lang} - Level ${curLevel} of ${cfg.levels}`;
+      const levelProgressText = `${curDoneInLevel} / ${maxLevelLessons} lessons`;
+
+      let daysRemaining = 'N/A';
+      let status = 'In Progress';
+
+      if (g.exam) {
+        const examDate = new Date(g.exam);
+        examDate.setHours(0, 0, 0, 0);
+        const diffTime = examDate.getTime() - todayDate.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        daysRemaining = diffDays >= 0 ? `${diffDays} days` : `Passed (${Math.abs(diffDays)}d ago)`;
+
+        if (progressPct === 100) {
+          status = 'Graduated / Completed';
+        } else if (diffDays <= 7 && diffDays >= 0) {
+          status = 'Graduating Soon (Exam in <7d)';
+        } else if (diffDays < 0) {
+          status = 'Exam Date Passed';
+        }
+      }
+
+      return [
+        escapeCSV(g.group),
+        escapeCSV(teacherMap[g.tid] || 'Unknown Teacher'),
+        escapeCSV(g.lang),
+        escapeCSV(cfg.category || '-'),
+        escapeCSV(currentStageName),
+        curLevel,
+        cfg.levels || 1,
+        escapeCSV(levelProgressText),
+        done,
+        tl,
+        `${progressPct}%`,
+        escapeCSV(g.days || 'Every Day'),
+        escapeCSV(`${g.startTime || '–'} - ${g.endTime || '–'}`),
+        escapeCSV(g.start || '-'),
+        escapeCSV(g.exam || '-'),
+        escapeCSV(daysRemaining),
+        escapeCSV(status)
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(csvContent);
+  } catch (err) { res.status(500).send('Error generating sync data: ' + err.message); }
+});
+
+app.get('/api/sync/teachers', verifySyncKey, async (_req, res) => {
+  try {
+    const [groups, teachers] = await Promise.all([
+      Group.find({ archived: { $ne: true } }),
+      Teacher.find(),
+    ]);
+
+    const calculateHours = g => {
+      const isKids = g.lang === 'Python (Kids)' || g.lang === 'Scratch';
+      const h = isKids ? 1.5 : 2.0;
+      const s = g.days === 'Every Day' ? 6 : 3;
+      return h * s;
+    };
+
+    const headers = [
+      'Teacher Name',
+      'Username',
+      'Subject Categories',
+      'Active Groups Count',
+      'Total Students',
+      'Weekly Teaching Hours (hrs/wk)',
+      'Groups Summary (Group Name | Subject & Current Level | Schedule | Time Slot | Students)'
+    ];
+
+    const rows = teachers.map(teacher => {
+      const tGroups = groups.filter(g => g.tid === teacher._id.toString());
+      const totalStudents = tGroups.reduce((sum, g) => sum + (g.students || 0), 0);
+      const weeklyHours = tGroups.reduce((sum, g) => sum + calculateHours(g), 0);
+      const subjects = Array.isArray(teacher.subject) ? teacher.subject.join(', ') : (teacher.subject || '-');
+
+      const groupsSummary = tGroups.map(g => {
+        const isAuto = g.autoProgress === true;
+        const auto = isAuto ? autoProgressGroup(g) : null;
+        const curLevel = isAuto ? auto.level : g.level;
+        const cfg = PC[g.lang] || { levels: 1 };
+        return `${g.group} [${g.lang} (Level ${curLevel}/${cfg.levels}) | ${g.days} | ${g.startTime || '–'}-${g.endTime || '–'} | ${g.students} std]`;
+      }).join('; ');
+
+      return [
+        escapeCSV(teacher.name),
+        escapeCSV(teacher.username),
+        escapeCSV(subjects),
+        tGroups.length,
+        totalStudents,
+        weeklyHours.toFixed(1),
+        escapeCSV(groupsSummary || 'No active groups')
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(csvContent);
+  } catch (err) { res.status(500).send('Error generating sync data: ' + err.message); }
+});
+
+app.get('/api/sync/courses', verifySyncKey, async (_req, res) => {
+  try {
+    const groups = await Group.find({ archived: { $ne: true } });
+
+    const headers = [
+      'Department / Category',
+      'Course / Subject',
+      'Course Levels (Months)',
+      'Total Course Lessons',
+      'Active Groups Count',
+      'Active Students Count',
+      'Current Level Breakdown',
+      'Average Course Progress (%)',
+      'Performance Status'
+    ];
+
+    const rows = [];
+    const MODULE_LIST = {
+      'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Node JS', 'Web Prompt'],
+      'IT Kids': ['Python (Kids)', 'Scratch'],
+      'Computer Literacy': ['Computer Literacy'],
+      'Graphic Design': ['Graphic Design'],
+      'Cyber Security': ['Cyber Security'],
+      'Python Backend': ['Python Backend'],
+      'AI': ['AI'],
+      'Prompt Engineering': ['Prompt Engineering'],
+      'SMM': ['Marketing', 'Mobilography'],
+    };
+
+    Object.entries(MODULE_LIST).forEach(([category, courses]) => {
+      courses.forEach(lang => {
+        const gs = groups.filter(g => g.lang === lang);
+        const totalStudents = gs.reduce((s, g) => s + (g.students || 0), 0);
+        const cfg = PC[lang] || { levels: 1 };
+        const tl = totalLessons(lang);
+
+        const avgPct = gs.length
+          ? Math.round(gs.reduce((s, g) => {
+              const isAuto = g.autoProgress === true;
+              const auto = isAuto ? autoProgressGroup(g) : null;
+              const done = isAuto ? auto.totalDone : totalDone(g.lang, g.level, g.doneInLevel);
+              return s + (tl ? (done / tl) * 100 : 0);
+            }, 0) / gs.length)
+          : 0;
+
+        const levelCounts = {};
+        gs.forEach(g => {
+          const isAuto = g.autoProgress === true;
+          const auto = isAuto ? autoProgressGroup(g) : null;
+          const curLevel = isAuto ? auto.level : g.level;
+          levelCounts[curLevel] = (levelCounts[curLevel] || 0) + 1;
+        });
+        const breakdownStr = gs.length
+          ? Object.entries(levelCounts).map(([lv, count]) => `${count} in Lv${lv}`).join(', ')
+          : 'None';
+
+        let perfLevel = 'No Active Groups';
+        if (gs.length > 0) {
+          if (avgPct >= 80) perfLevel = 'High (Near Completion)';
+          else if (avgPct >= 40) perfLevel = 'Moderate (Mid-Course)';
+          else perfLevel = 'Early Stage (0-39%)';
+        }
+
+        rows.push([
+          escapeCSV(category),
+          escapeCSV(lang),
+          escapeCSV(`${cfg.levels || 1} Levels (${cfg.levels || 1} Mos)`),
+          escapeCSV(`${tl} lessons`),
+          gs.length,
+          totalStudents,
+          escapeCSV(breakdownStr),
+          gs.length ? `${avgPct}%` : '0%',
+          escapeCSV(perfLevel)
+        ].join(','));
+      });
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(csvContent);
+  } catch (err) { res.status(500).send('Error generating sync data: ' + err.message); }
+});
+
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use((err, _req, res, _next) => { console.error(err); res.status(500).json({ error: 'Internal server error' }); });
 
