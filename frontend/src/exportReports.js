@@ -82,7 +82,7 @@ export function getTeacherHoursData(teachers = [], groups = []) {
         'Active Groups Count',
         'Total Students',
         'Weekly Teaching Hours (hrs/wk)',
-        'Groups Summary (Group | Subject | Schedule | Time | Students)'
+        'Groups Summary (Group Name | Subject & Current Level | Schedule | Time Slot | Students)'
     ];
 
     const rows = teachers.map(teacher => {
@@ -91,9 +91,14 @@ export function getTeacherHoursData(teachers = [], groups = []) {
         const weeklyHours = tGroups.reduce((sum, g) => sum + calculateGroupWeeklyHours(g), 0);
         const subjects = Array.isArray(teacher.subject) ? teacher.subject.join(', ') : (teacher.subject || '-');
 
-        const groupsSummary = tGroups.map(g => 
-            `${g.group} [${g.lang}, ${g.days}, ${g.startTime || '–'}-${g.endTime || '–'}, ${g.students} std]`
-        ).join('; ');
+        const groupsSummary = tGroups.map(g => {
+            const isAuto = g.autoProgress === true;
+            const auto = isAuto ? autoProgress(g) : null;
+            const curLevel = isAuto ? auto.level : g.level;
+            const cfg = PC[g.lang] || { levels: 1 };
+            const stageName = `${g.lang} (Level ${curLevel}/${cfg.levels})`;
+            return `${g.group} [${stageName} | ${g.days} | ${g.startTime || '–'}-${g.endTime || '–'} | ${g.students} std]`;
+        }).join('; ');
 
         return [
             teacher.name,
@@ -134,14 +139,15 @@ export function getStudentsAndGraduationsData(groups = [], teachers = []) {
     const headers = [
         'Group Name',
         'Teacher',
-        'Course / Language',
-        'Category',
-        'Students Count',
+        'Subject / Course',
+        'Department / Category',
+        'Current Stage (Subject & Level)',
         'Current Level',
-        'Max Levels',
-        'Lessons Completed',
+        'Max Levels in Course',
+        'Level Progress (Lessons Done / Total This Level)',
+        'Total Course Lessons Done',
         'Total Course Lessons',
-        'Completion Rate (%)',
+        'Overall Completion Rate (%)',
         'Schedule Mode',
         'Time Slot',
         'Start Date',
@@ -154,10 +160,15 @@ export function getStudentsAndGraduationsData(groups = [], teachers = []) {
         const isAuto = g.autoProgress === true;
         const auto = isAuto ? autoProgress(g) : null;
         const curLevel = isAuto ? auto.level : g.level;
+        const curDoneInLevel = isAuto ? auto.doneInLevel : g.doneInLevel;
         const done = isAuto ? auto.totalDone : totalDone(g.lang, g.level, g.doneInLevel);
         const tl = totalLessons(g.lang);
         const progressPct = pct(done, tl);
         const cfg = PC[g.lang] || { levels: 1, category: 'General' };
+        const maxLevelLessons = getLessonsInLevel(g.lang, curLevel);
+
+        const currentStageName = `${g.lang} - Level ${curLevel} of ${cfg.levels}`;
+        const levelProgressText = `${curDoneInLevel} / ${maxLevelLessons} lessons`;
 
         let daysRemaining = 'N/A';
         let status = 'In Progress';
@@ -183,9 +194,10 @@ export function getStudentsAndGraduationsData(groups = [], teachers = []) {
             teacherMap[g.tid] || 'Unknown Teacher',
             g.lang,
             cfg.category || '-',
-            g.students || 0,
+            currentStageName,
             curLevel,
             cfg.levels || 1,
+            levelProgressText,
             done,
             tl,
             `${progressPct}%`,
@@ -213,11 +225,12 @@ export function getStudentsAndGraduationsData(groups = [], teachers = []) {
         '',
         '',
         '',
+        '',
+        '',
+        '',
+        '',
+        '',
         totalStudents,
-        '',
-        '',
-        '',
-        '',
         `${avgCompletion}% Avg`,
         '',
         '',
@@ -237,14 +250,15 @@ export function getCourseCompletionData(groups = []) {
     const activeGroups = groups.filter(g => !g.archived);
 
     const headers = [
-        'Category / Department',
-        'Course / Module',
+        'Department / Category',
+        'Course / Subject',
         'Course Levels (Months)',
         'Total Course Lessons',
-        'Active Groups',
-        'Active Students',
-        'Average Progress (%)',
-        'Performance Level'
+        'Active Groups Count',
+        'Active Students Count',
+        'Current Level Breakdown',
+        'Average Course Progress (%)',
+        'Performance Status'
     ];
 
     const rows = [];
@@ -265,6 +279,18 @@ export function getCourseCompletionData(groups = []) {
                 }, 0) / gs.length)
                 : 0;
 
+            // Compute level breakdown (e.g., "1 in Lv1, 2 in Lv2")
+            const levelCounts = {};
+            gs.forEach(g => {
+                const isAuto = g.autoProgress === true;
+                const auto = isAuto ? autoProgress(g) : null;
+                const curLevel = isAuto ? auto.level : g.level;
+                levelCounts[curLevel] = (levelCounts[curLevel] || 0) + 1;
+            });
+            const breakdownStr = gs.length
+                ? Object.entries(levelCounts).map(([lv, count]) => `${count} in Lv${lv}`).join(', ')
+                : 'None';
+
             let perfLevel = 'No Active Groups';
             if (gs.length > 0) {
                 if (avgPct >= 80) perfLevel = 'High (Near Completion)';
@@ -275,10 +301,11 @@ export function getCourseCompletionData(groups = []) {
             rows.push([
                 category,
                 lang,
-                cfg.levels || 1,
-                tl,
+                `${cfg.levels || 1} Levels (${cfg.levels || 1} Mos)`,
+                `${tl} lessons`,
                 gs.length,
                 totalStudents,
+                breakdownStr,
                 gs.length ? `${avgPct}%` : '0%',
                 perfLevel
             ]);
@@ -302,6 +329,7 @@ export function getCourseCompletionData(groups = []) {
         '',
         activeGroups.length,
         totalStudents,
+        '',
         `${overallAvg}% Overall`,
         'Platform Wide Summary'
     ];
