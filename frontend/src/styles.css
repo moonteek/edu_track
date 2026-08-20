@@ -3238,3 +3238,173 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     border-color: rgba(255, 255, 255, 0.2);
     transform: translateY(-2px);
 }
+
+/* ============================================================
+   LEVEL BAR & PROGRESS COMPONENTS
+   ============================================================ */
+.level-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.level-bar-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--fm);
+    font-size: 12px;
+}
+
+.level-bar-label {
+    color: var(--gl);
+}
+
+.level-bar-pct {
+    color: var(--yellow);
+    font-weight: 700;
+}
+
+.level-bar-track {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+    height: 16px;
+    background: transparent;
+}
+
+.level-seg {
+    flex: 1;
+    position: relative;
+    background: var(--dark3);
+    border-radius: 4px;
+    overflow: hidden;
+    height: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.level-seg-active {
+    border-color: rgba(245, 197, 24, 0.3);
+}
+
+.level-seg-fill {
+    height: 100%;
+    background: var(--yellow);
+    transition: width 0.3s ease;
+}
+
+.level-seg-fill.done {
+    background: var(--yellow);
+    width: 100% !important;
+}
+
+.level-seg-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--fm);
+    font-size: 9px;
+    font-weight: 700;
+    pointer-events: none;
+}
+
+.level-seg-label.dark {
+    color: #000;
+}
+
+.level-seg-label.light {
+    color: var(--white);
+}
+
+.level-ticks {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+}
+
+.level-tick {
+    flex: 1;
+    text-align: center;
+    font-family: var(--fm);
+    font-size: 10px;
+    color: var(--gray);
+    line-height: 1.2;
+}
+
+.level-tick.done-tick {
+    color: var(--white);
+}
+
+.level-tick.active-tick {
+    color: var(--yellow);
+    font-weight: 600;
+}
+
+/* Mini Table Progress Bar (Fix overlapping text) */
+.mini-level-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 160px;
+    max-width: 220px;
+    padding: 2px 0;
+}
+
+.mini-level-bar {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+    height: 6px;
+}
+
+.mini-seg {
+    flex: 1;
+    background: var(--dark3);
+    border-radius: 2px;
+    overflow: hidden;
+    height: 100%;
+}
+
+.mini-seg.active-seg {
+    box-shadow: 0 0 4px rgba(245, 197, 24, 0.2);
+}
+
+.mini-seg-fill {
+    height: 100%;
+    background: var(--yellow);
+    transition: width 0.3s ease;
+}
+
+.mini-seg-fill.done {
+    background: var(--yellow);
+    width: 100% !important;
+}
+
+.mini-level-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--fm);
+    line-height: 1.2;
+}
+
+.mini-level-pct {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--yellow);
+    flex-shrink: 0;
+}
+
+.mini-level-detail {
+    font-size: 10px;
+    color: var(--gray);
+    opacity: 0.85;
+    white-space: nowrap;
+}
