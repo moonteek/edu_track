@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { PC, MODULES, totalLessons, totalDone, pct, autoProgress } from './constants';
+import { PC, MODULES, totalLessons, totalDone, pct, autoProgress, getLessonsInLevel } from './constants';
 
 function getTodayStr() {
     const d = new Date();
