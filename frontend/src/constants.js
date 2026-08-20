@@ -9,7 +9,7 @@ export const PC = {
     'TypeScript': { levels: 1, color: '#3178c6', category: 'Web Development' },
     'React JS': { levels: 3, color: '#61dafb', category: 'Web Development' },
     'Node JS': { levels: 3, color: '#78c97a', category: 'Web Development' },
-    'Web Prompt': { levels: 1, color: '#00e5ff', category: 'Web Development' },
+    'Web Prompt': { levels: 1, color: '#00e5ff', category: 'Web Development', levelLessons: [6] },
     // IT Kids
     'Python (Kids)': { levels: 3, color: '#306998', category: 'IT Kids' },
     'Scratch': { levels: 3, color: '#ff8f00', category: 'IT Kids' },

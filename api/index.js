@@ -71,7 +71,7 @@ const PC = {
   'TypeScript': { levels: 1, category: 'Web Development' },
   'React JS': { levels: 3, category: 'Web Development' },
   'Node JS': { levels: 3, category: 'Web Development' },
-  'Web Prompt': { levels: 1, category: 'Web Development' },
+  'Web Prompt': { levels: 1, category: 'Web Development', levelLessons: [6] },
   // IT Kids
   'Python (Kids)': { levels: 3, category: 'IT Kids' },
   'Scratch': { levels: 3, category: 'IT Kids' },
