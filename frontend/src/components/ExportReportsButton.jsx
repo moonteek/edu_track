@@ -1,10 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { api } from '../api';
 import { useToast } from './Toast';
-import { exportTeacherHoursReport, exportStudentsAndGraduationsReport, exportCourseCompletionReport } from '../exportReports';
+import { 
+    exportTeacherHoursReport, 
+    exportStudentsAndGraduationsReport, 
+    exportCourseCompletionReport,
+    exportMasterExcelReport
+} from '../exportReports';
 
 export default function ExportReportsButton({ token, onLogout, teachers: propTeachers, groups: propGroups }) {
     const [open, setOpen] = useState(false);
+    const [format, setFormat] = useState('xlsx'); // 'xlsx' or 'csv'
     const [exporting, setExporting] = useState(false);
     const dropdownRef = useRef(null);
     const showToast = useToast();
@@ -39,19 +45,24 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
             const { teachers, groups } = await ensureData();
 
             if (type === 'teachers') {
-                exportTeacherHoursReport(teachers, groups);
-                showToast('✅ Teacher hours report exported successfully');
+                exportTeacherHoursReport(teachers, groups, format);
+                showToast(`✅ Teacher hours report exported as .${format.toUpperCase()}`);
             } else if (type === 'students') {
-                exportStudentsAndGraduationsReport(groups, teachers);
-                showToast('✅ Students & graduations report exported successfully');
+                exportStudentsAndGraduationsReport(groups, teachers, format);
+                showToast(`✅ Students & graduations report exported as .${format.toUpperCase()}`);
             } else if (type === 'courses') {
-                exportCourseCompletionReport(groups);
-                showToast('✅ Course completion report exported successfully');
-            } else if (type === 'all') {
-                exportTeacherHoursReport(teachers, groups);
-                setTimeout(() => exportStudentsAndGraduationsReport(groups, teachers), 300);
-                setTimeout(() => exportCourseCompletionReport(groups), 600);
-                showToast('✅ All 3 reports exported successfully');
+                exportCourseCompletionReport(groups, format);
+                showToast(`✅ Course completion report exported as .${format.toUpperCase()}`);
+            } else if (type === 'master') {
+                if (format === 'xlsx') {
+                    exportMasterExcelReport(teachers, groups);
+                    showToast('✅ Multi-sheet Excel Master Workbook exported');
+                } else {
+                    exportTeacherHoursReport(teachers, groups, 'csv');
+                    setTimeout(() => exportStudentsAndGraduationsReport(groups, teachers, 'csv'), 300);
+                    setTimeout(() => exportCourseCompletionReport(groups, 'csv'), 600);
+                    showToast('✅ All 3 CSV reports downloaded');
+                }
             }
             setOpen(false);
         } catch (err) {
@@ -88,7 +99,7 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
                     <polyline points="7 10 12 15 17 10"></polyline>
                     <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                {exporting ? 'Exporting...' : 'Export Reports'}
+                {exporting ? 'Exporting...' : 'Export Excel / CSV'}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
                     <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
@@ -101,18 +112,61 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
                         top: 'calc(100% + 6px)',
                         right: 0,
                         zIndex: 1000,
-                        minWidth: '290px',
+                        minWidth: '310px',
                         background: 'var(--dark2)',
                         border: '1px solid var(--border2)',
                         borderRadius: '12px',
-                        padding: '6px',
-                        boxShadow: '0 12px 32px rgba(0, 0, 0, 0.7)',
+                        padding: '8px',
+                        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.75)',
                         backdropFilter: 'blur(16px)',
                         animation: 'fadeIn 0.15s ease',
                     }}
                 >
-                    <div style={{ padding: '8px 12px 4px', fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', fontFamily: 'var(--fm)' }}>
-                        Excel / CSV Reports
+                    {/* Format Toggle (.xlsx vs .csv) */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px 10px', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', fontFamily: 'var(--fm)' }}>
+                            Export Format:
+                        </span>
+                        <div style={{ display: 'flex', gap: '4px', background: 'var(--dark3)', padding: '2px', borderRadius: '6px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setFormat('xlsx')}
+                                style={{
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '3px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    background: format === 'xlsx' ? 'var(--yellow)' : 'transparent',
+                                    color: format === 'xlsx' ? '#000' : 'var(--gl)',
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                .XLSX (Excel)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFormat('csv')}
+                                style={{
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '3px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    background: format === 'csv' ? 'var(--yellow)' : 'transparent',
+                                    color: format === 'csv' ? '#000' : 'var(--gl)',
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                .CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style={{ padding: '6px 8px 4px', fontSize: '10px', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.8px', fontFamily: 'var(--fm)' }}>
+                        Available Reports ({format.toUpperCase()})
                     </div>
 
                     <button
@@ -126,7 +180,7 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
                             <span style={iconBadgeStyle}>👨‍🏫</span>
                             <div>
                                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--white)' }}>Teacher Hours & Groups</div>
-                                <div style={{ fontSize: '11px', color: 'var(--gray)' }}>Workload, schedules & weekly hours</div>
+                                <div style={{ fontSize: '11px', color: 'var(--gray)' }}>Workloads, schedules & hours/week</div>
                             </div>
                         </div>
                     </button>
@@ -158,7 +212,7 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
                             <span style={iconBadgeStyle}>📈</span>
                             <div>
                                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--white)' }}>Course Completion Rates</div>
-                                <div style={{ fontSize: '11px', color: 'var(--gray)' }}>Category & module success rates</div>
+                                <div style={{ fontSize: '11px', color: 'var(--gray)' }}>Category & module completion stats</div>
                             </div>
                         </div>
                     </button>
@@ -167,16 +221,20 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
 
                     <button
                         type="button"
-                        onClick={() => handleExport('all')}
+                        onClick={() => handleExport('master')}
                         style={menuItemStyle}
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(245, 197, 24, 0.12)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ ...iconBadgeStyle, background: 'rgba(245, 197, 24, 0.2)' }}>📦</span>
+                            <span style={{ ...iconBadgeStyle, background: 'rgba(245, 197, 24, 0.2)' }}>📊</span>
                             <div>
-                                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--yellow)' }}>Export All (3-in-1)</div>
-                                <div style={{ fontSize: '11px', color: 'var(--gl)' }}>Download all datasets simultaneously</div>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--yellow)' }}>
+                                    {format === 'xlsx' ? 'Master Excel Workbook (.xlsx)' : 'Export All 3 (.csv)'}
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--gl)' }}>
+                                    {format === 'xlsx' ? 'Multi-sheet workbook with all 3 tabs' : 'Download all 3 CSV datasets'}
+                                </div>
                             </div>
                         </div>
                     </button>
@@ -208,3 +266,4 @@ const iconBadgeStyle = {
     background: 'rgba(255,255,255,0.05)',
     borderRadius: '6px',
 };
+

@@ -1,26 +1,5 @@
+import * as XLSX from 'xlsx';
 import { PC, MODULES, totalLessons, totalDone, pct, autoProgress } from './constants';
-
-/**
- * Downloads a string as a CSV file in the browser with UTF-8 BOM so Excel opens it with proper encoding.
- */
-function downloadCSV(filename, csvContent) {
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-}
-
-function escapeCSV(val) {
-    if (val === null || val === undefined) return '""';
-    const str = String(val).replace(/"/g, '""');
-    return `"${str}"`;
-}
 
 function getTodayStr() {
     const d = new Date();
@@ -41,10 +20,59 @@ function calculateGroupWeeklyHours(group) {
 }
 
 /**
- * REPORT 1: Teacher Hours & Group List
+ * Auto-fit column widths for SheetJS
  */
-export function exportTeacherHoursReport(teachers = [], groups = []) {
-    const today = getTodayStr();
+function autoFitColumns(aoaData) {
+    const colWidths = [];
+    aoaData.forEach(row => {
+        row.forEach((cell, colIdx) => {
+            const cellLen = cell !== null && cell !== undefined ? String(cell).length : 0;
+            colWidths[colIdx] = Math.max(colWidths[colIdx] || 10, Math.min(60, cellLen + 3));
+        });
+    });
+    return colWidths.map(w => ({ wch: w }));
+}
+
+/**
+ * Save multi-sheet or single sheet Excel Workbook (.xlsx)
+ */
+function saveWorkbook(sheets, filename) {
+    const wb = XLSX.utils.book_new();
+    sheets.forEach(({ name, data }) => {
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        ws['!cols'] = autoFitColumns(data);
+        XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31)); // Excel max sheet name is 31 chars
+    });
+    XLSX.writeFile(wb, filename);
+}
+
+/**
+ * Download CSV fallback
+ */
+function downloadCSV(filename, aoaData) {
+    const BOM = '\uFEFF';
+    const csvContent = aoaData.map(row => 
+        row.map(val => {
+            if (val === null || val === undefined) return '""';
+            const str = String(val).replace(/"/g, '""');
+            return `"${str}"`;
+        }).join(',')
+    ).join('\r\n');
+
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+// ── DATA BUILDERS ─────────────────────────────────────────────
+
+export function getTeacherHoursData(teachers = [], groups = []) {
     const activeGroups = groups.filter(g => !g.archived);
 
     const headers = [
@@ -68,38 +96,35 @@ export function exportTeacherHoursReport(teachers = [], groups = []) {
         ).join('; ');
 
         return [
-            escapeCSV(teacher.name),
-            escapeCSV(teacher.username),
-            escapeCSV(subjects),
+            teacher.name,
+            teacher.username,
+            subjects,
             tGroups.length,
             totalStudents,
-            weeklyHours.toFixed(1),
-            escapeCSV(groupsSummary || 'No active groups')
-        ].join(',');
+            Number(weeklyHours.toFixed(1)),
+            groupsSummary || 'No active groups'
+        ];
     });
 
-    // Total summary row
     const totalAllHours = activeGroups.reduce((sum, g) => sum + calculateGroupWeeklyHours(g), 0);
     const totalAllStudents = activeGroups.reduce((sum, g) => sum + (g.students || 0), 0);
     const summaryRow = [
-        escapeCSV('TOTAL / AVERAGE'),
-        '""',
-        '""',
+        'TOTAL / AVERAGE',
+        '',
+        '',
         activeGroups.length,
         totalAllStudents,
-        totalAllHours.toFixed(1),
-        escapeCSV(`Total ${teachers.length} teachers managing ${activeGroups.length} active groups`)
-    ].join(',');
+        Number(totalAllHours.toFixed(1)),
+        `Total ${teachers.length} teachers managing ${activeGroups.length} active groups`
+    ];
 
-    const csvContent = [headers.join(','), ...rows, summaryRow].join('\r\n');
-    downloadCSV(`EduTrack_Teacher_Hours_${today}.csv`, csvContent);
+    return {
+        name: 'Teacher Hours',
+        data: [headers, ...rows, summaryRow]
+    };
 }
 
-/**
- * REPORT 2: Active Students & Upcoming Graduations
- */
-export function exportStudentsAndGraduationsReport(groups = [], teachers = []) {
-    const today = getTodayStr();
+export function getStudentsAndGraduationsData(groups = [], teachers = []) {
     const todayDate = new Date();
     todayDate.setHours(0, 0, 0, 0);
 
@@ -154,23 +179,23 @@ export function exportStudentsAndGraduationsReport(groups = [], teachers = []) {
         }
 
         return [
-            escapeCSV(g.group),
-            escapeCSV(teacherMap[g.tid] || 'Unknown Teacher'),
-            escapeCSV(g.lang),
-            escapeCSV(cfg.category || '-'),
+            g.group,
+            teacherMap[g.tid] || 'Unknown Teacher',
+            g.lang,
+            cfg.category || '-',
             g.students || 0,
             curLevel,
             cfg.levels || 1,
             done,
             tl,
             `${progressPct}%`,
-            escapeCSV(g.days || 'Every Day'),
-            escapeCSV(`${g.startTime || '–'} - ${g.endTime || '–'}`),
-            escapeCSV(g.start || '-'),
-            escapeCSV(g.exam || '-'),
-            escapeCSV(daysRemaining),
-            escapeCSV(status)
-        ].join(',');
+            g.days || 'Every Day',
+            `${g.startTime || '–'} - ${g.endTime || '–'}`,
+            g.start || '-',
+            g.exam || '-',
+            daysRemaining,
+            status
+        ];
     });
 
     const totalStudents = activeGroups.reduce((s, g) => s + (g.students || 0), 0);
@@ -184,33 +209,31 @@ export function exportStudentsAndGraduationsReport(groups = [], teachers = []) {
         : 0;
 
     const summaryRow = [
-        escapeCSV('TOTAL SUMMARY'),
-        '""',
-        '""',
-        '""',
+        'TOTAL SUMMARY',
+        '',
+        '',
+        '',
         totalStudents,
-        '""',
-        '""',
-        '""',
-        '""',
+        '',
+        '',
+        '',
+        '',
         `${avgCompletion}% Avg`,
-        '""',
-        '""',
-        '""',
-        '""',
-        '""',
-        escapeCSV(`${activeGroups.length} Active Groups`)
-    ].join(',');
+        '',
+        '',
+        '',
+        '',
+        '',
+        `${activeGroups.length} Active Groups`
+    ];
 
-    const csvContent = [headers.join(','), ...rows, summaryRow].join('\r\n');
-    downloadCSV(`EduTrack_Students_Graduations_${today}.csv`, csvContent);
+    return {
+        name: 'Students & Graduations',
+        data: [headers, ...rows, summaryRow]
+    };
 }
 
-/**
- * REPORT 3: Course Completion Rates & Platform Performance
- */
-export function exportCourseCompletionReport(groups = []) {
-    const today = getTodayStr();
+export function getCourseCompletionData(groups = []) {
     const activeGroups = groups.filter(g => !g.archived);
 
     const headers = [
@@ -250,15 +273,15 @@ export function exportCourseCompletionReport(groups = []) {
             }
 
             rows.push([
-                escapeCSV(category),
-                escapeCSV(lang),
+                category,
+                lang,
                 cfg.levels || 1,
                 tl,
                 gs.length,
                 totalStudents,
                 gs.length ? `${avgPct}%` : '0%',
-                escapeCSV(perfLevel)
-            ].join(','));
+                perfLevel
+            ]);
         });
     });
 
@@ -273,16 +296,69 @@ export function exportCourseCompletionReport(groups = []) {
         : 0;
 
     const summaryRow = [
-        escapeCSV('ALL PLATFORM COURSES'),
-        '""',
-        '""',
-        '""',
+        'ALL PLATFORM COURSES',
+        '',
+        '',
+        '',
         activeGroups.length,
         totalStudents,
         `${overallAvg}% Overall`,
-        escapeCSV('Platform Wide Summary')
-    ].join(',');
+        'Platform Wide Summary'
+    ];
 
-    const csvContent = [headers.join(','), ...rows, summaryRow].join('\r\n');
-    downloadCSV(`EduTrack_Course_Completion_Rates_${today}.csv`, csvContent);
+    return {
+        name: 'Course Completion',
+        data: [headers, ...rows, summaryRow]
+    };
 }
+
+// ── EXPORT COMMANDS (.xlsx & .csv) ────────────────────────────
+
+export function exportTeacherHoursReport(teachers = [], groups = [], format = 'xlsx') {
+    const today = getTodayStr();
+    const sheet = getTeacherHoursData(teachers, groups);
+    const filename = `EduTrack_Teacher_Hours_${today}`;
+
+    if (format === 'xlsx') {
+        saveWorkbook([sheet], `${filename}.xlsx`);
+    } else {
+        downloadCSV(`${filename}.csv`, sheet.data);
+    }
+}
+
+export function exportStudentsAndGraduationsReport(groups = [], teachers = [], format = 'xlsx') {
+    const today = getTodayStr();
+    const sheet = getStudentsAndGraduationsData(groups, teachers);
+    const filename = `EduTrack_Students_Graduations_${today}`;
+
+    if (format === 'xlsx') {
+        saveWorkbook([sheet], `${filename}.xlsx`);
+    } else {
+        downloadCSV(`${filename}.csv`, sheet.data);
+    }
+}
+
+export function exportCourseCompletionReport(groups = [], format = 'xlsx') {
+    const today = getTodayStr();
+    const sheet = getCourseCompletionData(groups);
+    const filename = `EduTrack_Course_Completion_Rates_${today}`;
+
+    if (format === 'xlsx') {
+        saveWorkbook([sheet], `${filename}.xlsx`);
+    } else {
+        downloadCSV(`${filename}.csv`, sheet.data);
+    }
+}
+
+/**
+ * Multi-Sheet Master Workbook (.xlsx) containing all 3 reports in 1 single file!
+ */
+export function exportMasterExcelReport(teachers = [], groups = []) {
+    const today = getTodayStr();
+    const sheet1 = getTeacherHoursData(teachers, groups);
+    const sheet2 = getStudentsAndGraduationsData(groups, teachers);
+    const sheet3 = getCourseCompletionData(groups);
+
+    saveWorkbook([sheet1, sheet2, sheet3], `EduTrack_Master_Report_${today}.xlsx`);
+}
+
