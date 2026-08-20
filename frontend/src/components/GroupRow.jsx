@@ -5,7 +5,7 @@ export default function GroupRow({ group, onEdit, onDelete, onArchive, selected,
     const isAuto = group.autoProgress === true;
     const auto = isAuto ? autoProgress(group) : null;
     const currentLevel = isAuto ? auto.level : group.level;
-    const done = isAuto ? auto.totalDone : totalDone(group.level, group.doneInLevel);
+    const done = isAuto ? auto.totalDone : totalDone(group.lang, group.level, group.doneInLevel);
 
     const cfg = PC[group.lang] || { levels: 1 };
     const tl = totalLessons(group.lang);

@@ -1,10 +1,15 @@
+export const DEFAULT_LPL = 13;
+export const LPL = 13; // for backward compatibility
+
 export const PC = {
     // Web Development
-    'HTML': { levels: 1, color: '#ff6b4a', category: 'Web Development' },
-    'CSS': { levels: 2, color: '#6b8fff', category: 'Web Development' },
+    'HTML': { levels: 1, color: '#ff6b4a', category: 'Web Development', levelLessons: [10] },
+    'CSS': { levels: 2, color: '#6b8fff', category: 'Web Development', levelLessons: [11, 13] },
     'JavaScript': { levels: 3, color: '#f5c518', category: 'Web Development' },
+    'TypeScript': { levels: 1, color: '#3178c6', category: 'Web Development' },
     'React JS': { levels: 3, color: '#61dafb', category: 'Web Development' },
     'Node JS': { levels: 3, color: '#78c97a', category: 'Web Development' },
+    'Web Prompt': { levels: 1, color: '#00e5ff', category: 'Web Development' },
     // IT Kids
     'Python (Kids)': { levels: 3, color: '#306998', category: 'IT Kids' },
     'Scratch': { levels: 3, color: '#ff8f00', category: 'IT Kids' },
@@ -26,7 +31,7 @@ export const PC = {
 };
 
 export const MODULES = {
-    'Web Development': ['HTML', 'CSS', 'JavaScript', 'React JS', 'Node JS'],
+    'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Node JS', 'Web Prompt'],
     'IT Kids': ['Python (Kids)', 'Scratch'],
     'Computer Literacy': ['Computer Literacy'],
     'Graphic Design': ['Graphic Design'],
@@ -37,16 +42,52 @@ export const MODULES = {
     'SMM': ['Marketing', 'Mobilography'],
 };
 
-export const LPL = 13;
 export const VALID_LANGS = Object.keys(PC);
 
-export const totalLessons = (lang) => (PC[lang]?.levels || 1) * LPL;
-export const totalDone = (lv, dim) => (lv - 1) * LPL + (dim || 0);
+export function getLessonsInLevel(lang, level = 1) {
+    const cfg = PC[lang];
+    if (!cfg) return DEFAULT_LPL;
+    if (cfg.levelLessons && cfg.levelLessons[level - 1] !== undefined) {
+        return cfg.levelLessons[level - 1];
+    }
+    return DEFAULT_LPL;
+}
+
+export const totalLessons = (lang) => {
+    const cfg = PC[lang];
+    if (!cfg) return DEFAULT_LPL;
+    let sum = 0;
+    for (let i = 1; i <= cfg.levels; i++) {
+        sum += getLessonsInLevel(lang, i);
+    }
+    return sum;
+};
+
+export const totalDone = (arg1, arg2, arg3) => {
+    if (typeof arg1 === 'string') {
+        const lang = arg1;
+        const lv = arg2 || 1;
+        const dim = arg3 || 0;
+        let sum = 0;
+        for (let i = 1; i < lv; i++) {
+            sum += getLessonsInLevel(lang, i);
+        }
+        return sum + Math.min(dim, getLessonsInLevel(lang, lv));
+    }
+    // Backward-compatible fallback for totalDone(lv, dim)
+    const lv = arg1 || 1;
+    const dim = arg2 || 0;
+    return (lv - 1) * DEFAULT_LPL + (dim || 0);
+};
+
 export const pct = (d, t) => (t ? Math.min(100, Math.round((d / t) * 100)) : 0);
 
 export const tagCls = (lang) => {
     const map = {
-        'HTML': 'HTML', 'CSS': 'CSS', 'JavaScript': 'JavaScript', 'React JS': 'React', 'Node JS': 'Node',
+        'HTML': 'HTML', 'CSS': 'CSS', 'JavaScript': 'JavaScript',
+        'TypeScript': 'TypeScript',
+        'React JS': 'React', 'Node JS': 'Node',
+        'Web Prompt': 'WebPrompt',
         'Python (Kids)': 'Python', 'Scratch': 'Scratch',
         'Computer Literacy': 'CompLit',
         'Graphic Design': 'GraphicDesign',
@@ -98,12 +139,27 @@ export function autoProgress(group) {
         return {
             level: group.level,
             doneInLevel: group.doneInLevel,
-            totalDone: totalDone(group.level, group.doneInLevel),
+            totalDone: totalDone(group.lang, group.level, group.doneInLevel),
         };
     }
     const effectiveElapsed = Math.min(tl, elapsed);
-    const curLevel = Math.min(maxLevels, Math.floor((effectiveElapsed - 1) / LPL) + 1);
-    const curDoneInLevel = effectiveElapsed >= tl ? LPL : ((effectiveElapsed - 1) % LPL) + 1;
+    let remaining = effectiveElapsed;
+    let curLevel = 1;
+    let curDoneInLevel = 0;
+    for (let i = 1; i <= maxLevels; i++) {
+        const lpl = getLessonsInLevel(group.lang, i);
+        if (remaining <= lpl) {
+            curLevel = i;
+            curDoneInLevel = remaining;
+            break;
+        } else {
+            remaining -= lpl;
+            if (i === maxLevels) {
+                curLevel = maxLevels;
+                curDoneInLevel = lpl;
+            }
+        }
+    }
     return {
         level: curLevel,
         doneInLevel: curDoneInLevel,
@@ -113,12 +169,13 @@ export function autoProgress(group) {
 
 /**
  * Compute the exam date (last lesson day) starting from startDateStr,
- * counting LPL valid lesson days per the schedule. Returns 'YYYY-MM-DD'.
+ * counting valid lesson days per the schedule for the specific level. Returns 'YYYY-MM-DD'.
  */
-export function calcExamDate(startDateStr, scheduleMode) {
+export function calcExamDate(startDateStr, scheduleMode, lang = 'HTML', level = 1) {
     const date = new Date(startDateStr);
+    const targetLessons = getLessonsInLevel(lang, level);
     let lessonsCount = 1;
-    while (lessonsCount < LPL) {
+    while (lessonsCount < targetLessons) {
         date.setDate(date.getDate() + 1);
         const day = date.getDay();
         if (day === 0) continue;

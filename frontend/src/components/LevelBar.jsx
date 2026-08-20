@@ -1,4 +1,4 @@
-import { PC, LPL, totalDone, totalLessons, pct, autoProgress } from '../constants';
+import { PC, getLessonsInLevel, totalDone, totalLessons, pct, autoProgress } from '../constants';
 
 export default function LevelBar({ group, mode = 'card' }) {
     const isAuto = group.autoProgress === true;
@@ -8,16 +8,21 @@ export default function LevelBar({ group, mode = 'card' }) {
 
     const cfg = PC[group.lang] || { levels: 1 };
     const lvls = cfg.levels;
-    const done = totalDone(currentLevel, currentDoneInLevel);
+    const done = totalDone(group.lang, currentLevel, currentDoneInLevel);
     const tl = totalLessons(group.lang);
     const op = pct(done, tl);
 
+    let runningLessons = 0;
     const segments = Array.from({ length: lvls }, (_, i) => {
         const lv = i + 1;
+        const levelMax = getLessonsInLevel(group.lang, lv);
         const isDone = lv < currentLevel;
         const isCur = lv === currentLevel;
-        const fw = isDone ? 100 : isCur ? Math.min(100, Math.round((currentDoneInLevel / LPL) * 100)) : 0;
-        return { lv, isDone, isCur, fw };
+        const fw = isDone ? 100 : isCur ? Math.min(100, Math.round((currentDoneInLevel / levelMax) * 100)) : 0;
+        const startLesson = runningLessons + 1;
+        const endLesson = runningLessons + levelMax;
+        runningLessons += levelMax;
+        return { lv, isDone, isCur, fw, levelMax, startLesson, endLesson };
     });
 
     if (mode === 'card') {
@@ -39,7 +44,7 @@ export default function LevelBar({ group, mode = 'card' }) {
                     {segments.map((s) => (
                         <div key={s.lv} className={'level-tick ' + (s.isDone ? 'done-tick' : s.isCur ? 'active-tick' : '')}>
                             Level {s.lv}<br />
-                            <span style={{ fontSize: '8px', opacity: 0.6 }}>{(s.lv - 1) * LPL + 1}-{s.lv * LPL}</span>
+                            <span style={{ fontSize: '8px', opacity: 0.6 }}>{s.startLesson}-{s.endLesson}</span>
                         </div>
                     ))}
                 </div>
@@ -48,6 +53,7 @@ export default function LevelBar({ group, mode = 'card' }) {
     }
 
     // mini / table mode
+    const curLevelMax = getLessonsInLevel(group.lang, currentLevel);
     return (
         <div className="mini-level-wrap">
             <div className="mini-level-bar">
@@ -59,7 +65,7 @@ export default function LevelBar({ group, mode = 'card' }) {
             </div>
             <div className="mini-level-info">
                 <span className="mini-level-pct">{op}%</span>
-                <span className="mini-level-detail">Lv{currentLevel}/{lvls} &nbsp;·&nbsp; {currentDoneInLevel}/{LPL} this level</span>
+                <span className="mini-level-detail">Lv{currentLevel}/{lvls} &nbsp;·&nbsp; {currentDoneInLevel}/{curLevelMax} this level</span>
             </div>
         </div>
     );

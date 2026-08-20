@@ -62,13 +62,16 @@ app.use(async (req, _res, next) => {
 
 const SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 const SALT = 10;
+const DEFAULT_LPL = 13;
 const PC = {
   // Web Development
-  'HTML': { levels: 1, category: 'Web Development' },
-  'CSS': { levels: 2, category: 'Web Development' },
+  'HTML': { levels: 1, category: 'Web Development', levelLessons: [10] },
+  'CSS': { levels: 2, category: 'Web Development', levelLessons: [11, 13] },
   'JavaScript': { levels: 3, category: 'Web Development' },
+  'TypeScript': { levels: 1, category: 'Web Development' },
   'React JS': { levels: 3, category: 'Web Development' },
   'Node JS': { levels: 3, category: 'Web Development' },
+  'Web Prompt': { levels: 1, category: 'Web Development' },
   // IT Kids
   'Python (Kids)': { levels: 3, category: 'IT Kids' },
   'Scratch': { levels: 3, category: 'IT Kids' },
@@ -93,6 +96,33 @@ const validLangs = Object.keys(PC);
 const ADMIN_USER = process.env.ADMIN_USERNAME || 'moonteek';
 const ADMIN_PASS = process.env.ADMIN_PASSWORD || '702009';
 const issueToken = payload => jwt.sign(payload, SECRET, { expiresIn: '30d' });
+
+function getLessonsInLevel(lang, level = 1) {
+  const cfg = PC[lang];
+  if (!cfg) return DEFAULT_LPL;
+  if (cfg.levelLessons && cfg.levelLessons[level - 1] !== undefined) {
+    return cfg.levelLessons[level - 1];
+  }
+  return DEFAULT_LPL;
+}
+
+function totalLessons(lang) {
+  const cfg = PC[lang];
+  if (!cfg) return DEFAULT_LPL;
+  let sum = 0;
+  for (let i = 1; i <= cfg.levels; i++) {
+    sum += getLessonsInLevel(lang, i);
+  }
+  return sum;
+}
+
+function totalDone(lang, level, doneInLevel) {
+  let sum = 0;
+  for (let i = 1; i < level; i++) {
+    sum += getLessonsInLevel(lang, i);
+  }
+  return sum + Math.min(doneInLevel || 0, getLessonsInLevel(lang, level));
+}
 
 function auth(req, res, next) {
   const header = req.headers.authorization;
@@ -326,7 +356,8 @@ app.post('/api/groups', auth, async (req, res) => {
     if (+students > 25 || +students < 1) return res.status(400).json({ error: 'A group must have between 1 and 25 students' });
     const cfg = PC[lang];
     if (level < 1 || level > cfg.levels) return res.status(400).json({ error: `Level must be between 1 and ${cfg.levels}` });
-    if (doneInLevel < 0 || doneInLevel > LPL) return res.status(400).json({ error: `doneInLevel must be between 0 and ${LPL}` });
+    const maxDim = getLessonsInLevel(lang, level);
+    if (doneInLevel < 0 || doneInLevel > maxDim) return res.status(400).json({ error: `doneInLevel must be between 0 and ${maxDim}` });
     const dStart = new Date(start);
     const dExam = new Date(exam);
     if (isNaN(dStart.getTime()) || isNaN(dExam.getTime())) return res.status(400).json({ error: 'Invalid start or exam date' });
@@ -350,15 +381,17 @@ app.put('/api/groups/:id', auth, async (req, res) => {
     if (req.body.lang && !validLangs.includes(req.body.lang)) return res.status(400).json({ error: 'Invalid lang' });
 
     const cfg = PC[newLang];
+    const targetLevel = req.body.level != null ? +req.body.level : g.level;
     if (req.body.level != null) {
       const lv = +req.body.level;
       if (isNaN(lv) || lv < 1 || lv > cfg.levels) return res.status(400).json({ error: `Level must be between 1 and ${cfg.levels}` });
       g.level = lv;
     }
 
+    const maxDim = getLessonsInLevel(newLang, targetLevel);
     if (req.body.doneInLevel != null) {
       const dim = +req.body.doneInLevel;
-      if (isNaN(dim) || dim < 0 || dim > LPL) return res.status(400).json({ error: `doneInLevel must be between 0 and ${LPL}` });
+      if (isNaN(dim) || dim < 0 || dim > maxDim) return res.status(400).json({ error: `doneInLevel must be between 0 and ${maxDim}` });
       g.doneInLevel = dim;
     }
 
@@ -416,8 +449,8 @@ app.post('/api/groups/bulk-delete', auth, async (req, res) => {
 app.get('/api/stats', auth, adminOnly, async (_req, res) => {
   try {
     const allGroups = await Group.find({ archived: { $ne: true } });
-    const doneFn = g => (g.level - 1) * LPL + g.doneInLevel;
-    const totalFn = g => (PC[g.lang]?.levels || 1) * LPL;
+    const doneFn = g => totalDone(g.lang, g.level, g.doneInLevel);
+    const totalFn = g => totalLessons(g.lang);
     const avgProgress = allGroups.length ? Math.round(allGroups.reduce((a, g) => a + doneFn(g) / totalFn(g) * 100, 0) / allGroups.length) : 0;
     const byLang = validLangs.map(lang => {
       const gs = allGroups.filter(g => g.lang === lang);

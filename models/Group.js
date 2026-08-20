@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const schema = new mongoose.Schema({
   tid: { type: String, required: true },
   group: { type: String, required: true, trim: true },
-  lang: { type: String, required: true, enum: ['HTML', 'CSS', 'JavaScript', 'React JS', 'Node JS', 'Python (Kids)', 'Scratch', 'Computer Literacy', 'Graphic Design', 'Cyber Security', 'Python Backend', 'AI', 'Prompt Engineering', 'Marketing', 'Mobilography'] },
+  lang: { type: String, required: true, enum: ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Node JS', 'Web Prompt', 'Python (Kids)', 'Scratch', 'Computer Literacy', 'Graphic Design', 'Cyber Security', 'Python Backend', 'AI', 'Prompt Engineering', 'Marketing', 'Mobilography'] },
   startTime: { type: String, required: true },
   endTime: { type: String, required: true },
   start: { type: String, required: true },

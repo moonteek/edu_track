@@ -6,7 +6,7 @@ export default function TeacherCard({ teacher, groups, index = 0, onEdit, onDele
         ? Math.round(groups.reduce((a, g) => {
             const isAuto = g.autoProgress === true;
             const auto = isAuto ? autoProgress(g) : null;
-            const done = isAuto ? auto.totalDone : totalDone(g.level, g.doneInLevel);
+            const done = isAuto ? auto.totalDone : totalDone(g.lang, g.level, g.doneInLevel);
             return a + pct(done, totalLessons(g.lang));
         }, 0) / groups.length)
         : 0;
@@ -37,7 +37,7 @@ export default function TeacherCard({ teacher, groups, index = 0, onEdit, onDele
                         const isAuto = g.autoProgress === true;
                         const auto = isAuto ? autoProgress(g) : null;
                         const currentLevel = isAuto ? auto.level : g.level;
-                        const done = isAuto ? auto.totalDone : totalDone(g.level, g.doneInLevel);
+                        const done = isAuto ? auto.totalDone : totalDone(g.lang, g.level, g.doneInLevel);
                         const p = pct(done, totalLessons(g.lang));
                         const cfg = PC[g.lang] || { levels: 1 };
                         return (

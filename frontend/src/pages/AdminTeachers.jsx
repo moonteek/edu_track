@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate } from '../constants';
+import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, getLessonsInLevel } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 import TeacherCard from '../components/TeacherCard';
@@ -64,6 +64,7 @@ export default function AdminTeachers({ token, onLogout }) {
         start: '',
         exam: '',
         students: '',
+        autoProgress: false,
     });
     const [gFormLoading, setGFormLoading] = useState(false);
     const [gFormError, setGFormError] = useState('');
@@ -98,8 +99,17 @@ export default function AdminTeachers({ token, onLogout }) {
                 availability: nextAvail
             }, token, onLogout);
             
-            setTeachers(prev => prev.map(t => t.id === scheduleTeacher.id ? { ...t, availability: nextAvail } : t));
-            setScheduleTeacher(prev => ({ ...prev, availability: nextAvail }));
+            setScheduleTeacher(prev => ({
+                ...prev,
+                availability: nextAvail
+            }));
+            
+            setTeachers(prev => (prev || []).map(t => {
+                if (t.id === scheduleTeacher.id) {
+                    return { ...t, availability: nextAvail };
+                }
+                return t;
+            }));
             showToast(`Schedule slot updated to ${nextStatus}`);
         } catch (err) {
             showToast(err.message, true);
@@ -108,9 +118,11 @@ export default function AdminTeachers({ token, onLogout }) {
 
     function openCreateGroupForTeacher(teacher) {
         setGroupTeacher(teacher);
+        const subs = Array.isArray(teacher.subject) ? teacher.subject : [teacher.subject];
+        const initialLang = (subs[0] && MODULES[subs[0]] && MODULES[subs[0]][0]) || '';
         setGForm({
             group: '',
-            lang: '',
+            lang: initialLang,
             level: 1,
             doneInLevel: 0,
             startTime: '',
@@ -128,8 +140,8 @@ export default function AdminTeachers({ token, onLogout }) {
     function setGField(key, val) {
         setGForm(f => {
             const next = { ...f, [key]: val };
-            if ((key === 'start' || key === 'days') && next.start && next.days) {
-                try { next.exam = calcExamDate(next.start, next.days); } catch { }
+            if ((key === 'start' || key === 'days' || key === 'lang' || key === 'level') && next.start && next.days) {
+                try { next.exam = calcExamDate(next.start, next.days, next.lang || 'HTML', next.level || 1); } catch { }
             }
             if (key === 'startTime' || key === 'lang') {
                 const isKids = next.lang === 'Python (Kids)' || next.lang === 'Scratch';
@@ -630,20 +642,24 @@ export default function AdminTeachers({ token, onLogout }) {
                         </div>
                     </div>
 
-                    {gForm.lang && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
-                            <div className="f-group" style={{ margin: 0 }}>
-                                <label className="f-label">Level (1 – {PC[gForm.lang]?.levels || 1})</label>
-                                <input className="f-input" type="number" min="1" max={PC[gForm.lang]?.levels || 1} value={gForm.level}
-                                    onChange={e => setGField('level', Math.min(PC[gForm.lang]?.levels || 1, Math.max(1, +e.target.value)))} />
+                    {gForm.lang && (() => {
+                        const maxDoneInLevel = getLessonsInLevel(gForm.lang, gForm.level);
+                        const maxLevel = PC[gForm.lang]?.levels || 1;
+                        return (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                                <div className="f-group" style={{ margin: 0 }}>
+                                    <label className="f-label">Level (1 – {maxLevel})</label>
+                                    <input className="f-input" type="number" min="1" max={maxLevel} value={gForm.level}
+                                        onChange={e => setGField('level', Math.min(maxLevel, Math.max(1, +e.target.value)))} />
+                                </div>
+                                <div className="f-group" style={{ margin: 0 }}>
+                                    <label className="f-label">Done in Level (0 – {maxDoneInLevel})</label>
+                                    <input className="f-input" type="number" min="0" max={maxDoneInLevel} value={gForm.doneInLevel}
+                                        onChange={e => setGField('doneInLevel', Math.min(maxDoneInLevel, Math.max(0, +e.target.value)))} />
+                                </div>
                             </div>
-                            <div className="f-group" style={{ margin: 0 }}>
-                                <label className="f-label">Done in Level (0 – 13)</label>
-                                <input className="f-input" type="number" min="0" max="13" value={gForm.doneInLevel}
-                                    onChange={e => setGField('doneInLevel', Math.min(13, Math.max(0, +e.target.value)))} />
-                            </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
                         <div className="f-group" style={{ margin: 0 }}>

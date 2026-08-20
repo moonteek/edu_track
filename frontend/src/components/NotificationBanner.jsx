@@ -13,7 +13,7 @@ function saveDismissed(map) {
 function getGroupPct(g) {
     const isAuto = g.autoProgress === true;
     const auto = isAuto ? autoProgress(g) : null;
-    const done = isAuto ? auto.totalDone : totalDone(g.level, g.doneInLevel);
+    const done = isAuto ? auto.totalDone : totalDone(g.lang, g.level, g.doneInLevel);
     return pct(done, totalLessons(g.lang));
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, autoProgress } from '../constants';
+import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, autoProgress, getLessonsInLevel } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 import GroupRow from '../components/GroupRow';
@@ -91,7 +91,7 @@ export default function AdminGroups({ token, onLogout }) {
     if (progFilter !== 'all') filtered = filtered.filter((g) => {
         const isAuto = g.autoProgress === true;
         const auto = isAuto ? autoProgress(g) : null;
-        const done = isAuto ? auto.totalDone : totalDone(g.level, g.doneInLevel);
+        const done = isAuto ? auto.totalDone : totalDone(g.lang, g.level, g.doneInLevel);
         const p = pct(done, totalLessons(g.lang));
         return progFilter === 'not-started' ? p === 0 : progFilter === 'in-progress' ? p > 0 && p < 100 : p === 100;
     });
@@ -111,9 +111,9 @@ export default function AdminGroups({ token, onLogout }) {
     function setField(key, val) {
         setForm(f => {
             const next = { ...f, [key]: val };
-            // Auto-calc exam when start or days change
-            if ((key === 'start' || key === 'days') && next.start && next.days) {
-                try { next.exam = calcExamDate(next.start, next.days); } catch { /* ignore */ }
+            // Auto-calc exam when start or days or lang or level change
+            if ((key === 'start' || key === 'days' || key === 'lang' || key === 'level') && next.start && next.days) {
+                try { next.exam = calcExamDate(next.start, next.days, next.lang || 'HTML', next.level || 1); } catch { /* ignore */ }
             }
             // Auto-calc endTime when startTime or lang changes
             if (key === 'startTime' || key === 'lang') {
@@ -477,20 +477,23 @@ export default function AdminGroups({ token, onLogout }) {
                 </div>
 
                 {/* Level + Done in level */}
-                {form.lang && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <div className="f-group" style={{ margin: 0 }}>
-                            <label className="f-label">Level (1 – {maxLevel})</label>
-                            <input className="f-input" type="number" min="1" max={maxLevel} value={form.level}
-                                onChange={e => setField('level', Math.min(maxLevel, Math.max(1, +e.target.value)))} />
+                {form.lang && (() => {
+                    const maxDoneInLevel = getLessonsInLevel(form.lang, form.level);
+                    return (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div className="f-group" style={{ margin: 0 }}>
+                                <label className="f-label">Level (1 – {maxLevel})</label>
+                                <input className="f-input" type="number" min="1" max={maxLevel} value={form.level}
+                                    onChange={e => setField('level', Math.min(maxLevel, Math.max(1, +e.target.value)))} />
+                            </div>
+                            <div className="f-group" style={{ margin: 0 }}>
+                                <label className="f-label">Done in Level (0 – {maxDoneInLevel})</label>
+                                <input className="f-input" type="number" min="0" max={maxDoneInLevel} value={form.doneInLevel}
+                                    onChange={e => setField('doneInLevel', Math.min(maxDoneInLevel, Math.max(0, +e.target.value)))} />
+                            </div>
                         </div>
-                        <div className="f-group" style={{ margin: 0 }}>
-                            <label className="f-label">Done in Level (0 – 13)</label>
-                            <input className="f-input" type="number" min="0" max="13" value={form.doneInLevel}
-                                onChange={e => setField('doneInLevel', Math.min(13, Math.max(0, +e.target.value)))} />
-                        </div>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {/* Schedule row */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>

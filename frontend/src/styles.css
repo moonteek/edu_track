@@ -1199,6 +1199,11 @@ body {
     color: #f5c518
 }
 
+.tag-TypeScript {
+    background: rgba(49, 120, 198, .15);
+    color: #3178c6
+}
+
 .tag-React {
     background: rgba(97, 218, 251, .15);
     color: #61dafb
@@ -1207,6 +1212,11 @@ body {
 .tag-Node {
     background: rgba(104, 160, 99, .15);
     color: #78c97a
+}
+
+.tag-WebPrompt {
+    background: rgba(0, 229, 255, .15);
+    color: #00e5ff
 }
 
 .tag-Python {
