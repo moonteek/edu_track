@@ -624,11 +624,11 @@ app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
         escapeCSV(levelProgressText),
         done,
         tl,
-        `${progressPct}%`,
+        `="${progressPct}%"`,
         escapeCSV(g.days || 'Every Day'),
         escapeCSV(`${g.startTime || '–'} - ${g.endTime || '–'}`),
-        escapeCSV(g.start || '-'),
-        escapeCSV(g.exam || '-'),
+        escapeCSV(g.start ? ` ${g.start}` : '-'),
+        escapeCSV(g.exam ? ` ${g.exam}` : '-'),
         escapeCSV(daysRemaining),
         escapeCSV(status)
       ].join(',');
