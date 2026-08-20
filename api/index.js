@@ -35,6 +35,17 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+const mongoose = require('mongoose');
+
+// Root & health check endpoints (do not block on DB connection)
+app.get('/', (_req, res) => res.json({ message: 'EduTrack API Backend is running' }));
+app.get('/api', (_req, res) => res.json({
+  status: 'ok',
+  message: 'EduTrack API running',
+  db: mongoose.connection.readyState === 1 ? 'connected' : mongoose.connection.readyState === 2 ? 'connecting' : 'disconnected'
+}));
+
 // Start seed process in the background immediately
 connectDB().then(() => seed()).catch(console.error);
 
@@ -43,7 +54,10 @@ app.use(async (req, _res, next) => {
     await connectDB();
     next();
   }
-  catch (err) { next(err); }
+  catch (err) {
+    console.error('Database connection error:', err.message);
+    next(err);
+  }
 });
 
 const SECRET = process.env.JWT_SECRET || 'change-me-in-production';
@@ -90,9 +104,6 @@ function adminOnly(req, res, next) {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admins only' });
   next();
 }
-
-app.get('/', (_req, res) => res.json({ message: 'EduTrack API Backend is running' }));
-app.get('/api', (_req, res) => res.json({ status: 'ok', message: 'EduTrack API running' }));
 
 app.post('/api/auth/admin', async (req, res) => {
   try {
