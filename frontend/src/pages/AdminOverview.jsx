@@ -3,6 +3,7 @@ import { api } from '../api';
 import { PC, LPL, totalDone, totalLessons, pct, tagCls, MODULES } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
+import ExportReportsButton from '../components/ExportReportsButton';
 
 export default function AdminOverview({ token, onLogout }) {
     const [stats, setStats] = useState(null);
@@ -38,7 +39,10 @@ export default function AdminOverview({ token, onLogout }) {
 
     return (
         <div className="panel-body">
-            <span className="slabel">Platform Stats</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <span className="slabel" style={{ margin: 0 }}>Platform Stats</span>
+                <ExportReportsButton token={token} onLogout={onLogout} />
+            </div>
             <div className="stats-row">
                 <div className="stat-card"><div className="stat-card-num">{stats.totalGroups}</div><div className="stat-card-lbl">Groups</div></div>
                 <div className="stat-card"><div className="stat-card-num">{stats.totalTeachers}</div><div className="stat-card-lbl">Teachers</div></div>

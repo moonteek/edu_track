@@ -6,6 +6,7 @@ import Skeleton from '../components/Skeleton';
 import GroupRow from '../components/GroupRow';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
+import ExportReportsButton from '../components/ExportReportsButton';
 
 const DAYS_OPTIONS = ['Odd Days', 'Even Days', 'Every Day'];
 
@@ -260,11 +261,15 @@ export default function AdminGroups({ token, onLogout }) {
 
     return (
         <div className="panel-body">
-            {/* Top bar: Create button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-                <button className="add-btn" onClick={openCreate} style={{ margin: 0 }}>
-                    <span className="add-icon">+</span>Add Group
-                </button>
+            {/* Top bar: Create button + Export button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <span className="slabel" style={{ margin: 0 }}>Active Groups & Management</span>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <ExportReportsButton token={token} onLogout={onLogout} teachers={teachers} groups={allGroups} />
+                    <button className="add-btn" onClick={openCreate} style={{ margin: 0 }}>
+                        <span className="add-icon">+</span>Add Group
+                    </button>
+                </div>
             </div>
 
             <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '8px', alignItems: 'flex-start' }}>
