@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate } from '../constants';
+import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, autoProgress } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 import GroupRow from '../components/GroupRow';
@@ -89,7 +89,10 @@ export default function AdminGroups({ token, onLogout }) {
     }
     if (langFilter !== 'all') filtered = filtered.filter((g) => g.lang === langFilter);
     if (progFilter !== 'all') filtered = filtered.filter((g) => {
-        const p = pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang));
+        const isAuto = g.autoProgress === true;
+        const auto = isAuto ? autoProgress(g) : null;
+        const done = isAuto ? auto.totalDone : totalDone(g.level, g.doneInLevel);
+        const p = pct(done, totalLessons(g.lang));
         return progFilter === 'not-started' ? p === 0 : progFilter === 'in-progress' ? p > 0 && p < 100 : p === 100;
     });
 

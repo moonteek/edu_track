@@ -1,10 +1,8 @@
 import { Link } from 'react-router-dom';
-import AnimatedBackground from '../components/AnimatedBackground';
 
 export default function NotFound() {
     return (
         <div className="view active lp-root" id="v-not-found">
-            <AnimatedBackground />
             <div className="nf-box">
                 <div className="nf-404">404</div>
                 <div className="nf-title">Looks like you're lost.</div>

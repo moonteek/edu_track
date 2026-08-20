@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct } from '../constants';
+import { totalDone, totalLessons, pct, autoProgress } from '../constants';
 
 const DISMISS_KEY = 'nearComplete_dismissed';
 function loadDismissed() {
@@ -8,6 +8,13 @@ function loadDismissed() {
 }
 function saveDismissed(map) {
     try { localStorage.setItem(DISMISS_KEY, JSON.stringify(map)); } catch { }
+}
+
+function getGroupPct(g) {
+    const isAuto = g.autoProgress === true;
+    const auto = isAuto ? autoProgress(g) : null;
+    const done = isAuto ? auto.totalDone : totalDone(g.level, g.doneInLevel);
+    return pct(done, totalLessons(g.lang));
 }
 
 export default function NotificationBell({ token, onGoToGroups }) {
@@ -20,9 +27,7 @@ export default function NotificationBell({ token, onGoToGroups }) {
         if (!token) return;
         try {
             const groups = await api('GET', '/api/groups', null, token);
-            setAllNear(groups.filter(g =>
-                pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang)) >= 95
-            ));
+            setAllNear(groups.filter(g => getGroupPct(g) >= 95));
         } catch { }
     }, [token]);
 
@@ -39,7 +44,7 @@ export default function NotificationBell({ token, onGoToGroups }) {
 
     const visible = allNear.filter(g => {
         const id = g.id || g._id;
-        const p = pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang));
+        const p = getGroupPct(g);
         return !dismissed[`${id}_${p}`];
     });
 
@@ -47,7 +52,7 @@ export default function NotificationBell({ token, onGoToGroups }) {
 
     function dismiss(group) {
         const id = group.id || group._id;
-        const p = pct(totalDone(group.level, group.doneInLevel), totalLessons(group.lang));
+        const p = getGroupPct(group);
         const next = { ...dismissed, [`${id}_${p}`]: true };
         setDismissed(next); saveDismissed(next);
     }
@@ -56,7 +61,7 @@ export default function NotificationBell({ token, onGoToGroups }) {
         const next = { ...dismissed };
         visible.forEach(g => {
             const id = g.id || g._id;
-            const p = pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang));
+            const p = getGroupPct(g);
             next[`${id}_${p}`] = true;
         });
         setDismissed(next); saveDismissed(next);
@@ -104,7 +109,7 @@ export default function NotificationBell({ token, onGoToGroups }) {
                         <div className="notif-drop-list">
                             {visible.map(g => {
                                 const id = g.id || g._id;
-                                const p = pct(totalDone(g.level, g.doneInLevel), totalLessons(g.lang));
+                                const p = getGroupPct(g);
                                 const done = p >= 100;
                                 return (
                                     <div key={id} className={`notif-drop-item${done ? ' done' : ''}`}>

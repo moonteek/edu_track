@@ -85,82 +85,12 @@ body {
 .lp-root {
     position: relative;
     min-height: 100vh;
-    background: #0a0a0a;
+    background-color: #060608;
+    background-image: 
+        radial-gradient(circle at 10% 10%, rgba(245, 197, 24, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 40%, rgba(96, 165, 250, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 50% 90%, rgba(167, 139, 250, 0.07) 0%, transparent 45%);
     overflow-x: hidden
-}
-
-/* Animated background particles */
-.lp-bg-particles {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    overflow: hidden
-}
-
-.lp-particle {
-    position: absolute;
-    border-radius: 50%;
-    background: var(--yellow);
-    animation: lp-float linear infinite;
-    will-change: transform;
-    transform: translate3d(0, 0, 0);
-}
-
-@keyframes lp-float {
-    0%   { transform: translate3d(0, 0, 0); opacity: .12; }
-    33%  { transform: translate3d(12px, -25px, 0); opacity: .18; }
-    66%  { transform: translate3d(-8px, -14px, 0); opacity: .10; }
-    100% { transform: translate3d(0, 0, 0); opacity: .12; }
-}
-
-/* Glowing Aurora Blobs */
-.lp-blob {
-    position: fixed;
-    border-radius: 50%;
-    filter: blur(60px);
-    pointer-events: none;
-    z-index: 0;
-    animation: lp-aurora-drift 24s ease-in-out infinite alternate;
-    opacity: 0.45;
-    will-change: transform;
-    transform: translate3d(0, 0, 0);
-    backface-visibility: hidden;
-    contain: strict;
-}
-
-.lp-blob-1 {
-    width: 50vw;
-    height: 50vh;
-    top: -8vh;
-    left: -8vw;
-    background: radial-gradient(circle, rgba(245, 197, 24, 0.18) 0%, transparent 65%);
-    animation-delay: 0s;
-}
-
-.lp-blob-2 {
-    width: 40vw;
-    height: 40vh;
-    top: 45vh;
-    right: -8vw;
-    background: radial-gradient(circle, rgba(96, 165, 250, 0.18) 0%, transparent 65%);
-    animation-delay: -7s;
-}
-
-.lp-blob-3 {
-    width: 55vw;
-    height: 55vh;
-    bottom: -15vh;
-    left: 22%;
-    background: radial-gradient(circle, rgba(167, 139, 250, 0.15) 0%, transparent 65%);
-    animation-delay: -13s;
-}
-
-@keyframes lp-aurora-drift {
-    0%   { transform: translate3d(0, 0, 0); }
-    33%  { transform: translate3d(4vw, -4vh, 0); }
-    66%  { transform: translate3d(-3vw, 3vh, 0); }
-    100% { transform: translate3d(2vw, -2vh, 0); }
 }
 
 /* Top header */
@@ -813,7 +743,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 20px;
-    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(245, 197, 24, .07) 0%, transparent 60%)
+    background: transparent
 }
 
 .login-box {

@@ -92,8 +92,23 @@ export function computeElapsedLessons(startDateStr, daysSchedule) {
  */
 export function autoProgress(group) {
     const elapsed = computeElapsedLessons(group.start, group.days);
-    if (elapsed === 0) return { level: group.level, doneInLevel: group.doneInLevel, totalDone: totalDone(group.level, group.doneInLevel) };
-    return { level: group.level, doneInLevel: elapsed, totalDone: totalDone(group.level, elapsed) };
+    const maxLevels = PC[group.lang]?.levels || 1;
+    const tl = totalLessons(group.lang);
+    if (elapsed === 0) {
+        return {
+            level: group.level,
+            doneInLevel: group.doneInLevel,
+            totalDone: totalDone(group.level, group.doneInLevel),
+        };
+    }
+    const effectiveElapsed = Math.min(tl, elapsed);
+    const curLevel = Math.min(maxLevels, Math.floor((effectiveElapsed - 1) / LPL) + 1);
+    const curDoneInLevel = effectiveElapsed >= tl ? LPL : ((effectiveElapsed - 1) % LPL) + 1;
+    return {
+        level: curLevel,
+        doneInLevel: curDoneInLevel,
+        totalDone: effectiveElapsed,
+    };
 }
 
 /**
