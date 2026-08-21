@@ -1083,54 +1083,59 @@ app.get('/api/sync/schedule', verifySyncKey, async (req, res) => {
     ];
 
     const headers = [
-      'Department / Category',
-      'Schedule Mode',
       'Teacher Name',
+      'Department / Specialization',
       'Total Active Groups',
-      ...slots.map(s => `Slot (${s})`),
-      'Weekly Teaching Hours'
+      'Total Weekly Hours',
+      ...slots.map(s => `ODD (${s})`),
+      ...slots.map(s => `EVEN (${s})`),
     ];
 
     const rows = [];
 
-    const scheduleViews = [
-      { key: 'oddDays', label: 'Odd Days (Mon, Wed, Fri)', groupDayMatch: 'Odd Days' },
-      { key: 'evenDays', label: 'Even Days (Tue, Thu, Sat)', groupDayMatch: 'Even Days' },
-    ];
+    teachers.forEach(t => {
+      const tGroups = groups.filter(g => g.tid === t._id.toString());
+      const avail = t.availability || { oddDays: {}, evenDays: {} };
+      const subjects = Array.isArray(t.subject) ? t.subject.join(', ') : (t.subject || 'General');
 
-    scheduleViews.forEach(v => {
-      teachers.forEach(t => {
-        const tGroups = groups.filter(g => g.tid === t._id.toString());
-        const targetGroups = tGroups.filter(g => g.days === v.groupDayMatch || g.days === 'Every Day');
-        const avail = t.availability || { oddDays: {}, evenDays: {} };
-        const subjects = Array.isArray(t.subject) ? t.subject.join(', ') : (t.subject || 'General');
+      const oddGroups = tGroups.filter(g => g.days === 'Odd Days' || g.days === 'Every Day');
+      const evenGroups = tGroups.filter(g => g.days === 'Even Days' || g.days === 'Every Day');
 
-        const slotValues = slots.map(slot => {
-          const hasLesson = targetGroups.some(g => isOverlapping(slot, g.startTime, g.endTime));
-          if (hasLesson) {
-            const grp = targetGroups.find(g => isOverlapping(slot, g.startTime, g.endTime));
-            return escapeCSV(grp ? `Lesson: ${grp.group} (${grp.lang} Lv${grp.level})` : 'Lesson');
-          }
-          const status = avail[v.key]?.[slot] || 'Unset';
-          return escapeCSV(status);
-        });
-
-        const weeklyHours = tGroups.reduce((sum, g) => {
-          const isKids = g.lang === 'Python (Kids)' || g.lang === 'Scratch';
-          const h = isKids ? 1.5 : 2.0;
-          const s = g.days === 'Every Day' ? 6 : 3;
-          return sum + (h * s);
-        }, 0);
-
-        rows.push([
-          escapeCSV(subjects),
-          escapeCSV(v.label),
-          escapeCSV(t.name),
-          tGroups.length,
-          ...slotValues,
-          escapeCSV(`${weeklyHours.toFixed(1)} hrs/wk`)
-        ].join(','));
+      const oddSlotValues = slots.map(slot => {
+        const hasLesson = oddGroups.some(g => isOverlapping(slot, g.startTime, g.endTime));
+        if (hasLesson) {
+          const grp = oddGroups.find(g => isOverlapping(slot, g.startTime, g.endTime));
+          return escapeCSV(grp ? `Lesson: ${grp.group} (${grp.lang} Lv${grp.level})` : 'Lesson');
+        }
+        const status = avail.oddDays?.[slot] || 'Unset';
+        return escapeCSV(status);
       });
+
+      const evenSlotValues = slots.map(slot => {
+        const hasLesson = evenGroups.some(g => isOverlapping(slot, g.startTime, g.endTime));
+        if (hasLesson) {
+          const grp = evenGroups.find(g => isOverlapping(slot, g.startTime, g.endTime));
+          return escapeCSV(grp ? `Lesson: ${grp.group} (${grp.lang} Lv${grp.level})` : 'Lesson');
+        }
+        const status = avail.evenDays?.[slot] || 'Unset';
+        return escapeCSV(status);
+      });
+
+      const weeklyHours = tGroups.reduce((sum, g) => {
+        const isKids = g.lang === 'Python (Kids)' || g.lang === 'Scratch';
+        const h = isKids ? 1.5 : 2.0;
+        const s = g.days === 'Every Day' ? 6 : 3;
+        return sum + (h * s);
+      }, 0);
+
+      rows.push([
+        escapeCSV(t.name),
+        escapeCSV(subjects),
+        tGroups.length,
+        escapeCSV(`${weeklyHours.toFixed(1)} hrs/wk`),
+        ...oddSlotValues,
+        ...evenSlotValues
+      ].join(','));
     });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
