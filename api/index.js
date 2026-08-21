@@ -73,7 +73,6 @@ const PC = {
   'Web Prompt': { levels: 1, category: 'Web Development', levelLessons: [6] },
   // Web Backend
   'Node JS': { levels: 3, category: 'Web Backend' },
-  'Web Backend': { levels: 3, category: 'Web Backend' },
   // IT Kids
   'Python (Kids)': { levels: 3, category: 'IT Kids' },
   'Scratch': { levels: 3, category: 'IT Kids' },
@@ -563,7 +562,7 @@ function computeElapsedLessons(startDateStr, daysSchedule) {
 
 const TRACK_SEQUENCES = {
   'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Web Prompt'],
-  'Web Backend': ['Node JS', 'Web Backend'],
+  'Web Backend': ['Node JS'],
   'IT Kids': ['Scratch', 'Python (Kids)'],
   'SMM': ['Marketing', 'Mobilography'],
 };
@@ -998,7 +997,7 @@ app.get('/api/sync/courses', verifySyncKey, async (_req, res) => {
     const rows = [];
     const MODULE_LIST = {
       'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Web Prompt'],
-      'Web Backend': ['Node JS', 'Web Backend'],
+      'Web Backend': ['Node JS'],
       'IT Kids': ['Python (Kids)', 'Scratch'],
       'Computer Literacy': ['Computer Literacy'],
       'Graphic Design': ['Graphic Design'],
