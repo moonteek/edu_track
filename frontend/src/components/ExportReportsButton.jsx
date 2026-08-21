@@ -116,8 +116,20 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
     const studentsUrl = syncConfig?.urls?.students || `${defaultBase}/api/sync/students?key=edutrack_sync_2026`;
     const teachersUrl = syncConfig?.urls?.teachers || `${defaultBase}/api/sync/teachers?key=edutrack_sync_2026`;
     const coursesUrl = syncConfig?.urls?.courses || `${defaultBase}/api/sync/courses?key=edutrack_sync_2026`;
+    const scheduleUrl = syncConfig?.urls?.schedule || `${defaultBase}/api/sync/schedule?key=edutrack_sync_2026`;
 
     const sheetsFeeds = [
+        {
+            title: 'Teacher Schedule & Availability Matrix',
+            tag: 'Tab: Schedule',
+            color: '#10b981',
+            bg: 'rgba(16, 185, 129, 0.12)',
+            border: 'rgba(16, 185, 129, 0.3)',
+            desc: 'Live matrix of all teacher time slots (08:00-20:00), odd/even days, active group lessons, and Free/Busy statuses.',
+            formula: `=IMPORTDATA("${scheduleUrl}")`,
+            url: scheduleUrl,
+            icon: '🗓️'
+        },
         {
             title: 'Active Students & Upcoming Graduations',
             tag: 'Tab: Students',

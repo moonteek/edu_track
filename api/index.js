@@ -796,6 +796,7 @@ app.get('/api/sync/config', auth, adminOnly, (req, res) => {
       students: `${baseUrl}/api/sync/students?key=${SYNC_KEY}`,
       teachers: `${baseUrl}/api/sync/teachers?key=${SYNC_KEY}`,
       courses: `${baseUrl}/api/sync/courses?key=${SYNC_KEY}`,
+      schedule: `${baseUrl}/api/sync/schedule?key=${SYNC_KEY}`,
     }
   });
 });
@@ -1056,11 +1057,80 @@ app.get('/api/sync/courses', verifySyncKey, async (_req, res) => {
       });
     });
 
+app.get('/api/sync/schedule', verifySyncKey, async (req, res) => {
+  try {
+    const [groups, teachers] = await Promise.all([
+      Group.find({ archived: { $ne: true } }),
+      Teacher.find(),
+    ]);
+
+    const isOverlapping = (slotStr, gStart, gEnd) => {
+      if (!gStart || !gEnd) return false;
+      const [s1, e1] = slotStr.split('-');
+      const toMins = t => { const [h, m] = t.split(':'); return parseInt(h) * 60 + parseInt(m); };
+      return toMins(s1) < toMins(gEnd) && toMins(gStart) < toMins(e1);
+    };
+
+    const slots = [
+      '08:00-10:00', '10:00-12:00', '14:00-16:00', '16:00-18:00', '18:00-20:00'
+    ];
+
+    const headers = [
+      'Department / Category',
+      'Schedule Mode',
+      'Teacher Name',
+      'Total Active Groups',
+      ...slots.map(s => `Slot (${s})`),
+      'Weekly Teaching Hours'
+    ];
+
+    const rows = [];
+
+    const scheduleViews = [
+      { key: 'oddDays', label: 'Odd Days (Mon, Wed, Fri)', groupDayMatch: 'Odd Days' },
+      { key: 'evenDays', label: 'Even Days (Tue, Thu, Sat)', groupDayMatch: 'Even Days' },
+    ];
+
+    scheduleViews.forEach(v => {
+      teachers.forEach(t => {
+        const tGroups = groups.filter(g => g.tid === t._id.toString());
+        const targetGroups = tGroups.filter(g => g.days === v.groupDayMatch || g.days === 'Every Day');
+        const avail = t.availability || { oddDays: {}, evenDays: {} };
+        const subjects = Array.isArray(t.subject) ? t.subject.join(', ') : (t.subject || 'General');
+
+        const slotValues = slots.map(slot => {
+          const hasLesson = targetGroups.some(g => isOverlapping(slot, g.startTime, g.endTime));
+          if (hasLesson) {
+            const grp = targetGroups.find(g => isOverlapping(slot, g.startTime, g.endTime));
+            return escapeCSV(grp ? `Lesson: ${grp.group} (${grp.lang} Lv${grp.level})` : 'Lesson');
+          }
+          const status = avail[v.key]?.[slot] || 'Unset';
+          return escapeCSV(status);
+        });
+
+        const weeklyHours = tGroups.reduce((sum, g) => {
+          const isKids = g.lang === 'Python (Kids)' || g.lang === 'Scratch';
+          const h = isKids ? 1.5 : 2.0;
+          const s = g.days === 'Every Day' ? 6 : 3;
+          return sum + (h * s);
+        }, 0);
+
+        rows.push([
+          escapeCSV(subjects),
+          escapeCSV(v.label),
+          escapeCSV(t.name),
+          tGroups.length,
+          ...slotValues,
+          escapeCSV(`${weeklyHours.toFixed(1)} hrs/wk`)
+        ].join(','));
+      });
+    });
+
     const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.send(csvContent);
-  } catch (err) { res.status(500).send('Error generating sync data: ' + err.message); }
+  } catch (err) { res.status(500).send('Error generating sync schedule: ' + err.message); }
 });
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));

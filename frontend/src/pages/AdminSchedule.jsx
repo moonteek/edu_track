@@ -235,6 +235,39 @@ export default function AdminSchedule({ token }) {
                         </svg>
                         Export Excel
                     </button>
+
+                    {/* ── Google Sheets Live Sync Button ── */}
+                    <button
+                        onClick={() => {
+                            const origin = window.location.origin.includes('localhost')
+                                ? 'https://edu-track-x27a.onrender.com'
+                                : window.location.origin;
+                            const syncUrl = `${origin}/api/sync/schedule?key=edutrack_sync_2026`;
+                            const formula = `=IMPORTDATA("${syncUrl}")`;
+                            navigator.clipboard.writeText(formula);
+                            showToast('📋 Live Google Sheets Formula copied! Paste into cell A1 in Google Sheets.');
+                        }}
+                        title="Copy Live Google Sheets formula (auto-updates in real-time)"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 14px', borderRadius: '8px',
+                            background: 'rgba(16,185,129,0.12)',
+                            border: '1px solid rgba(16,185,129,0.3)',
+                            color: '#10b981',
+                            fontSize: '13px', fontWeight: 600, fontFamily: 'var(--fm)',
+                            cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.22)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.55)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)'; }}
+                    >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 2v6h-6"></path>
+                            <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+                            <path d="M3 22v-6h6"></path>
+                            <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                        </svg>
+                        Google Sheets Live Sync
+                    </button>
                 </div>
 
                 <div style={{ display: 'flex', background: 'var(--darker)', border: '1px solid var(--border)', borderRadius: '8px', padding: '4px' }}>
