@@ -8,8 +8,10 @@ export const PC = {
     'JavaScript': { levels: 3, color: '#f5c518', category: 'Web Development' },
     'TypeScript': { levels: 1, color: '#3178c6', category: 'Web Development' },
     'React JS': { levels: 3, color: '#61dafb', category: 'Web Development' },
-    'Node JS': { levels: 3, color: '#78c97a', category: 'Web Development' },
     'Web Prompt': { levels: 1, color: '#00e5ff', category: 'Web Development', levelLessons: [6] },
+    // Web Backend
+    'Node JS': { levels: 3, color: '#78c97a', category: 'Web Backend' },
+    'Web Backend': { levels: 3, color: '#78c97a', category: 'Web Backend' },
     // IT Kids
     'Python (Kids)': { levels: 3, color: '#306998', category: 'IT Kids' },
     'Scratch': { levels: 3, color: '#ff8f00', category: 'IT Kids' },
@@ -31,7 +33,8 @@ export const PC = {
 };
 
 export const MODULES = {
-    'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Node JS', 'Web Prompt'],
+    'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Web Prompt'],
+    'Web Backend': ['Node JS', 'Web Backend'],
     'IT Kids': ['Python (Kids)', 'Scratch'],
     'Computer Literacy': ['Computer Literacy'],
     'Graphic Design': ['Graphic Design'],
@@ -87,6 +90,7 @@ export const tagCls = (lang) => {
         'HTML': 'HTML', 'CSS': 'CSS', 'JavaScript': 'JavaScript',
         'TypeScript': 'TypeScript',
         'React JS': 'React', 'Node JS': 'Node',
+        'Web Backend': 'Node',
         'Web Prompt': 'WebPrompt',
         'Python (Kids)': 'Python', 'Scratch': 'Scratch',
         'Computer Literacy': 'CompLit',
@@ -129,7 +133,8 @@ export function computeElapsedLessons(startDateStr, daysSchedule) {
 }
 
 export const TRACK_SEQUENCES = {
-    'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Node JS', 'Web Prompt'],
+    'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Web Prompt'],
+    'Web Backend': ['Node JS', 'Web Backend'],
     'IT Kids': ['Scratch', 'Python (Kids)'],
     'SMM': ['Marketing', 'Mobilography'],
 };
