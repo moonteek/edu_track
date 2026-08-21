@@ -1057,6 +1057,13 @@ app.get('/api/sync/courses', verifySyncKey, async (_req, res) => {
       });
     });
 
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(csvContent);
+  } catch (err) { res.status(500).send('Error generating sync data: ' + err.message); }
+});
+
 app.get('/api/sync/schedule', verifySyncKey, async (req, res) => {
   try {
     const [groups, teachers] = await Promise.all([
