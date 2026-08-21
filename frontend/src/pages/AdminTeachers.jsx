@@ -116,7 +116,7 @@ export default function AdminTeachers({ token, onLogout }) {
         }
     }
 
-    function openAddGroupModal(teacher) {
+    function openCreateGroupForTeacher(teacher) {
         setGroupTeacher(teacher);
         const subjects = Array.isArray(teacher.subject) ? teacher.subject : [teacher.subject];
         const defaultCategory = subjects[0] || 'Web Development';
@@ -141,6 +141,7 @@ export default function AdminTeachers({ token, onLogout }) {
         setGFormError('');
         setGroupModalOpen(true);
     }
+    const openAddGroupModal = openCreateGroupForTeacher;
 
     function setGField(key, val) {
         setGForm(f => {
