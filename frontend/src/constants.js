@@ -126,17 +126,132 @@ export function computeElapsedLessons(startDateStr, daysSchedule) {
     return count;
 }
 
+export const TRACK_SEQUENCES = {
+    'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Node JS', 'Web Prompt'],
+    'IT Kids': ['Scratch', 'Python (Kids)'],
+    'SMM': ['Marketing', 'Mobilography'],
+};
+
+export function getNextSubjectInTrack(currentLang) {
+    for (const [, sequence] of Object.entries(TRACK_SEQUENCES)) {
+        const idx = sequence.indexOf(currentLang);
+        if (idx !== -1 && idx < sequence.length - 1) {
+            return sequence[idx + 1];
+        }
+    }
+    return null;
+}
+
+export function getTrackDetails(currentLang, currentLevel = 1) {
+    for (const [trackName, sequence] of Object.entries(TRACK_SEQUENCES)) {
+        if (sequence.includes(currentLang)) {
+            let totalTrackLevels = 0;
+            let currentTrackMonth = 0;
+            let totalTrackLessons = 0;
+
+            for (const lang of sequence) {
+                const cfg = PC[lang] || { levels: 1 };
+                const isCurrent = lang === currentLang;
+                if (!isCurrent && currentTrackMonth === 0) {
+                    currentTrackMonth += cfg.levels;
+                } else if (isCurrent) {
+                    currentTrackMonth += currentLevel;
+                }
+                totalTrackLevels += cfg.levels;
+                totalTrackLessons += totalLessons(lang);
+            }
+
+            const nextSubject = getNextSubjectInTrack(currentLang);
+
+            return {
+                trackName,
+                trackMonth: currentTrackMonth,
+                totalTrackLevels,
+                totalTrackLessons,
+                nextSubject,
+                isLastSubject: !nextSubject,
+            };
+        }
+    }
+    return null;
+}
+
 /**
  * Given a group object, compute where it should be today based purely on
- * the calendar. Returns { level, doneInLevel, totalDone }.
- * Capped at the course's maximum total lessons.
+ * the calendar. Returns { lang, level, doneInLevel, totalDone }.
+ * Supports continuous track progression when trackMode is enabled.
  */
 export function autoProgress(group) {
     const elapsed = computeElapsedLessons(group.start, group.days);
+    
+    // Check if group is in continuous track mode
+    if (group.trackMode === true) {
+        const trackCategory = PC[group.trackStartLang || group.lang]?.category;
+        const sequence = TRACK_SEQUENCES[trackCategory];
+        
+        if (sequence) {
+            const startLang = group.trackStartLang || sequence[0];
+            const startIdx = sequence.indexOf(startLang);
+            const activeSequence = sequence.slice(startIdx >= 0 ? startIdx : 0);
+            
+            let remainingLessons = elapsed;
+            let curLang = activeSequence[0];
+            let curLevel = 1;
+            let curDoneInLevel = 0;
+            let totalTrackLessons = 0;
+
+            activeSequence.forEach(l => { totalTrackLessons += totalLessons(l); });
+
+            for (let s = 0; s < activeSequence.length; s++) {
+                const lName = activeSequence[s];
+                const cfg = PC[lName] || { levels: 1 };
+                curLang = lName;
+                
+                for (let lv = 1; lv <= cfg.levels; lv++) {
+                    const lpl = getLessonsInLevel(lName, lv);
+                    curLevel = lv;
+                    if (remainingLessons <= lpl) {
+                        curDoneInLevel = remainingLessons;
+                        return {
+                            lang: curLang,
+                            level: curLevel,
+                            doneInLevel: curDoneInLevel,
+                            totalDone: totalDone(curLang, curLevel, curDoneInLevel),
+                            trackDone: Math.min(totalTrackLessons, elapsed),
+                            trackTotal: totalTrackLessons,
+                            trackMonth: getTrackDetails(curLang, curLevel)?.trackMonth || curLevel,
+                            totalTrackMonths: getTrackDetails(curLang, curLevel)?.totalTrackLevels || cfg.levels,
+                            isFinished: false,
+                        };
+                    } else {
+                        remainingLessons -= lpl;
+                    }
+                }
+            }
+
+            const lastLang = activeSequence[activeSequence.length - 1];
+            const lastCfg = PC[lastLang] || { levels: 1 };
+            const lastLpl = getLessonsInLevel(lastLang, lastCfg.levels);
+            return {
+                lang: lastLang,
+                level: lastCfg.levels,
+                doneInLevel: lastLpl,
+                totalDone: totalLessons(lastLang),
+                trackDone: totalTrackLessons,
+                trackTotal: totalTrackLessons,
+                trackMonth: getTrackDetails(lastLang, lastCfg.levels)?.totalTrackLevels || lastCfg.levels,
+                totalTrackMonths: getTrackDetails(lastLang, lastCfg.levels)?.totalTrackLevels || lastCfg.levels,
+                isFinished: true,
+            };
+        }
+    }
+
+    // Default: Single-subject auto progress across its levels
     const maxLevels = PC[group.lang]?.levels || 1;
     const tl = totalLessons(group.lang);
     if (elapsed === 0) {
         return {
+            lang: group.lang,
             level: group.level,
             doneInLevel: group.doneInLevel,
             totalDone: totalDone(group.lang, group.level, group.doneInLevel),
@@ -161,6 +276,7 @@ export function autoProgress(group) {
         }
     }
     return {
+        lang: group.lang,
         level: curLevel,
         doneInLevel: curDoneInLevel,
         totalDone: effectiveElapsed,

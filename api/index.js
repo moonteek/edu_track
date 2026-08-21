@@ -484,12 +484,105 @@ function computeElapsedLessons(startDateStr, daysSchedule) {
   return count;
 }
 
+const TRACK_SEQUENCES = {
+  'Web Development': ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React JS', 'Node JS', 'Web Prompt'],
+  'IT Kids': ['Scratch', 'Python (Kids)'],
+  'SMM': ['Marketing', 'Mobilography'],
+};
+
+function getNextSubjectInTrack(currentLang) {
+  for (const [, sequence] of Object.entries(TRACK_SEQUENCES)) {
+    const idx = sequence.indexOf(currentLang);
+    if (idx !== -1 && idx < sequence.length - 1) {
+      return sequence[idx + 1];
+    }
+  }
+  return null;
+}
+
+function calcExamDate(startDateStr, scheduleMode, lang = 'HTML', level = 1) {
+  const date = new Date(startDateStr);
+  const targetLessons = getLessonsInLevel(lang, level);
+  let lessonsCount = 1;
+  while (lessonsCount < targetLessons) {
+    date.setDate(date.getDate() + 1);
+    const day = date.getDay();
+    if (day !== 0) {
+      if (scheduleMode === 'Odd Days' && (day === 1 || day === 3 || day === 5)) lessonsCount++;
+      else if (scheduleMode === 'Even Days' && (day === 2 || day === 4 || day === 6)) lessonsCount++;
+      else if (scheduleMode === 'Every Day') lessonsCount++;
+    }
+  }
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function autoProgressGroup(group) {
   const elapsed = computeElapsedLessons(group.start, group.days);
+  
+  if (group.trackMode === true) {
+    const trackCategory = PC[group.trackStartLang || group.lang]?.category;
+    const sequence = TRACK_SEQUENCES[trackCategory];
+    if (sequence) {
+      const startLang = group.trackStartLang || sequence[0];
+      const startIdx = sequence.indexOf(startLang);
+      const activeSequence = sequence.slice(startIdx >= 0 ? startIdx : 0);
+      
+      let remainingLessons = elapsed;
+      let curLang = activeSequence[0];
+      let curLevel = 1;
+      let curDoneInLevel = 0;
+      let totalTrackLessons = 0;
+
+      activeSequence.forEach(l => { totalTrackLessons += totalLessons(l); });
+
+      for (let s = 0; s < activeSequence.length; s++) {
+        const lName = activeSequence[s];
+        const cfg = PC[lName] || { levels: 1 };
+        curLang = lName;
+        
+        for (let lv = 1; lv <= cfg.levels; lv++) {
+          const lpl = getLessonsInLevel(lName, lv);
+          curLevel = lv;
+          if (remainingLessons <= lpl) {
+            curDoneInLevel = remainingLessons;
+            return {
+              lang: curLang,
+              level: curLevel,
+              doneInLevel: curDoneInLevel,
+              totalDone: totalDone(curLang, curLevel, curDoneInLevel),
+              trackDone: Math.min(totalTrackLessons, elapsed),
+              trackTotal: totalTrackLessons,
+              isFinished: false,
+            };
+          } else {
+            remainingLessons -= lpl;
+          }
+        }
+      }
+
+      const lastLang = activeSequence[activeSequence.length - 1];
+      const lastCfg = PC[lastLang] || { levels: 1 };
+      const lastLpl = getLessonsInLevel(lastLang, lastCfg.levels);
+      return {
+        lang: lastLang,
+        level: lastCfg.levels,
+        doneInLevel: lastLpl,
+        totalDone: totalLessons(lastLang),
+        trackDone: totalTrackLessons,
+        trackTotal: totalTrackLessons,
+        isFinished: true,
+      };
+    }
+  }
+
   const maxLevels = PC[group.lang]?.levels || 1;
   const tl = totalLessons(group.lang);
   if (elapsed === 0) {
     return {
+      lang: group.lang,
       level: group.level,
       doneInLevel: group.doneInLevel,
       totalDone: totalDone(group.lang, group.level, group.doneInLevel),
@@ -514,6 +607,7 @@ function autoProgressGroup(group) {
     }
   }
   return {
+    lang: group.lang,
     level: curLevel,
     doneInLevel: curDoneInLevel,
     totalDone: effectiveElapsed,
