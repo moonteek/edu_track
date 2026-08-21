@@ -107,7 +107,9 @@ export const tagCls = (lang) => {
  */
 export function computeElapsedLessons(startDateStr, daysSchedule) {
     if (!startDateStr) return 0;
-    const start = new Date(startDateStr);
+    const parts = startDateStr.split('-').map(Number);
+    if (parts.length < 3 || isNaN(parts[0])) return 0;
+    const start = new Date(parts[0], parts[1] - 1, parts[2]);
     start.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -212,6 +214,7 @@ export function autoProgress(group) {
                     curLevel = lv;
                     if (remainingLessons <= lpl) {
                         curDoneInLevel = remainingLessons;
+                        const examInfo = calcExamDates(group.start, group.days, curLang, curLevel, true, group.trackStartLang);
                         return {
                             lang: curLang,
                             level: curLevel,
@@ -221,6 +224,8 @@ export function autoProgress(group) {
                             trackTotal: totalTrackLessons,
                             trackMonth: getTrackDetails(curLang, curLevel)?.trackMonth || curLevel,
                             totalTrackMonths: getTrackDetails(curLang, curLevel)?.totalTrackLevels || cfg.levels,
+                            currentExamDate: examInfo.currentExamDate,
+                            finalExamDate: examInfo.finalExamDate,
                             isFinished: false,
                         };
                     } else {
@@ -232,6 +237,7 @@ export function autoProgress(group) {
             const lastLang = activeSequence[activeSequence.length - 1];
             const lastCfg = PC[lastLang] || { levels: 1 };
             const lastLpl = getLessonsInLevel(lastLang, lastCfg.levels);
+            const examInfo = calcExamDates(group.start, group.days, lastLang, lastCfg.levels, true, group.trackStartLang);
             return {
                 lang: lastLang,
                 level: lastCfg.levels,
@@ -241,6 +247,8 @@ export function autoProgress(group) {
                 trackTotal: totalTrackLessons,
                 trackMonth: getTrackDetails(lastLang, lastCfg.levels)?.totalTrackLevels || lastCfg.levels,
                 totalTrackMonths: getTrackDetails(lastLang, lastCfg.levels)?.totalTrackLevels || lastCfg.levels,
+                currentExamDate: examInfo.currentExamDate,
+                finalExamDate: examInfo.finalExamDate,
                 isFinished: true,
             };
         }
@@ -250,11 +258,14 @@ export function autoProgress(group) {
     const maxLevels = PC[group.lang]?.levels || 1;
     const tl = totalLessons(group.lang);
     if (elapsed === 0) {
+        const examInfo = calcExamDates(group.start, group.days, group.lang, group.level, false);
         return {
             lang: group.lang,
             level: group.level,
             doneInLevel: group.doneInLevel,
             totalDone: totalDone(group.lang, group.level, group.doneInLevel),
+            currentExamDate: examInfo.currentExamDate,
+            finalExamDate: examInfo.finalExamDate,
         };
     }
     const effectiveElapsed = Math.min(tl, elapsed);
@@ -275,34 +286,117 @@ export function autoProgress(group) {
             }
         }
     }
+    const examInfo = calcExamDates(group.start, group.days, group.lang, curLevel, false);
     return {
         lang: group.lang,
         level: curLevel,
         doneInLevel: curDoneInLevel,
         totalDone: effectiveElapsed,
+        currentExamDate: examInfo.currentExamDate,
+        finalExamDate: examInfo.finalExamDate,
     };
 }
 
 /**
- * Compute the exam date (last lesson day) starting from startDateStr,
- * counting valid lesson days per the schedule for the specific level. Returns 'YYYY-MM-DD'.
+ * Calculate the calendar date of the N-th lesson starting from startDateStr (overall start date),
+ * counting valid schedule days (Odd Days = Mon/Wed/Fri, Even Days = Tue/Thu/Sat, Every Day = Mon-Sat, Sunday skipped).
+ * Returns 'YYYY-MM-DD'.
  */
-export function calcExamDate(startDateStr, scheduleMode, lang = 'HTML', level = 1) {
-    const date = new Date(startDateStr);
-    const targetLessons = getLessonsInLevel(lang, level);
-    let lessonsCount = 1;
-    while (lessonsCount < targetLessons) {
-        date.setDate(date.getDate() + 1);
-        const day = date.getDay();
-        if (day === 0) continue;
-        if (scheduleMode === 'Even Days' && ![2, 4, 6].includes(day)) continue;
-        if (scheduleMode === 'Odd Days' && ![1, 3, 5].includes(day)) continue;
-        lessonsCount++;
+export function calcLessonDate(startDateStr, scheduleMode = 'Every Day', targetLessons = 1) {
+  if (!startDateStr || targetLessons <= 0) return '';
+  const parts = startDateStr.split('-').map(Number);
+  if (parts.length < 3 || isNaN(parts[0])) return '';
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+
+  let lessonsCount = 0;
+  while (lessonsCount < targetLessons) {
+    const day = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    let isValid = false;
+    if (day !== 0) { // Sunday skipped
+      if (scheduleMode === 'Even Days' && [2, 4, 6].includes(day)) isValid = true;
+      else if (scheduleMode === 'Odd Days' && [1, 3, 5].includes(day)) isValid = true;
+      else if (scheduleMode === 'Every Day') isValid = true;
     }
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    if (isValid) {
+      lessonsCount++;
+      if (lessonsCount === targetLessons) break;
+    }
+    date.setDate(date.getDate() + 1);
+  }
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Compute both Next Exam Date (for current subject & level) and Final Graduation Date (for full track/program)
+ * starting from the group's overall start date.
+ */
+export function calcExamDates(startDateStr, scheduleMode = 'Every Day', lang = 'HTML', level = 1, isTrack = true, trackStartLang = null) {
+  if (!startDateStr) return { currentExamDate: '', finalExamDate: '', exam: '' };
+
+  const trackCategory = PC[trackStartLang || lang]?.category;
+  const sequence = isTrack && trackCategory ? TRACK_SEQUENCES[trackCategory] : null;
+
+  let currentLessonsTarget = 0;
+  let totalTrackLessons = 0;
+
+  if (sequence && sequence.includes(lang)) {
+    const startLang = trackStartLang || sequence[0];
+    const startIdx = sequence.indexOf(startLang);
+    const activeSequence = sequence.slice(startIdx >= 0 ? startIdx : 0);
+
+    let reachedCurrent = false;
+    for (const sLang of activeSequence) {
+      const sCfg = PC[sLang] || { levels: 1 };
+      const sTotalLevels = sCfg.levels;
+      const isCurrentSubject = (sLang === lang);
+
+      if (!reachedCurrent) {
+        if (isCurrentSubject) {
+          for (let lv = 1; lv <= Math.min(level, sTotalLevels); lv++) {
+            currentLessonsTarget += getLessonsInLevel(sLang, lv);
+          }
+          reachedCurrent = true;
+        } else {
+          // Preceding subject in track
+          currentLessonsTarget += totalLessons(sLang);
+        }
+      }
+
+      totalTrackLessons += totalLessons(sLang);
+    }
+    if (!reachedCurrent) {
+      currentLessonsTarget = totalTrackLessons;
+    }
+  } else {
+    // Single subject / standalone course
+    const cfg = PC[lang] || { levels: 1 };
+    for (let lv = 1; lv <= Math.min(level, cfg.levels); lv++) {
+      currentLessonsTarget += getLessonsInLevel(lang, lv);
+    }
+    totalTrackLessons = totalLessons(lang);
+  }
+
+  const currentExamDate = calcLessonDate(startDateStr, scheduleMode, currentLessonsTarget) || '';
+  const finalExamDate = calcLessonDate(startDateStr, scheduleMode, totalTrackLessons) || '';
+
+  return {
+    currentExamDate,
+    finalExamDate,
+    exam: currentExamDate,
+    currentLessonsTarget,
+    totalTrackLessons,
+  };
+}
+
+/**
+ * Backward compatible single exam date (current level exam)
+ */
+export function calcExamDate(startDateStr, scheduleMode = 'Every Day', lang = 'HTML', level = 1, isTrack = true, trackStartLang = null) {
+  const res = calcExamDates(startDateStr, scheduleMode, lang, level, isTrack, trackStartLang);
+  return res.currentExamDate;
 }
 
 export const fmtDate = (d) => {

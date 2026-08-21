@@ -410,9 +410,9 @@ app.put('/api/groups/:id/unarchive', auth, async (req, res) => {
 
 app.post('/api/groups', auth, async (req, res) => {
   try {
-    let { tid, group, lang, startTime, endTime, start, exam, students, level, doneInLevel, days } = req.body;
+    let { tid, group, lang, startTime, endTime, start, exam, students, level, doneInLevel, days, trackMode, trackStartLang } = req.body;
     if (req.user.role === 'teacher') tid = req.user.tid;
-    if (!group || !lang || !startTime || !endTime || !start || !exam || !students || !level || !tid) return res.status(400).json({ error: 'All fields required' });
+    if (!group || !lang || !startTime || !endTime || !start || !students || !level || !tid) return res.status(400).json({ error: 'All required fields must be provided' });
     if (!validLangs.includes(lang)) return res.status(400).json({ error: 'Invalid lang' });
     level = +level; doneInLevel = +(doneInLevel ?? 0);
     if (+students > 25 || +students < 1) return res.status(400).json({ error: 'A group must have between 1 and 25 students' });
@@ -421,14 +421,20 @@ app.post('/api/groups', auth, async (req, res) => {
     const maxDim = getLessonsInLevel(lang, level);
     if (doneInLevel < 0 || doneInLevel > maxDim) return res.status(400).json({ error: `doneInLevel must be between 0 and ${maxDim}` });
     const dStart = new Date(start);
+    if (isNaN(dStart.getTime())) return res.status(400).json({ error: 'Invalid start date' });
+    
+    const scheduleDays = days || 'Every Day';
+    if (!exam) {
+      exam = calcExamDate(start, scheduleDays, lang, level, trackMode !== false, trackStartLang || lang);
+    }
     const dExam = new Date(exam);
-    if (isNaN(dStart.getTime()) || isNaN(dExam.getTime())) return res.status(400).json({ error: 'Invalid start or exam date' });
+    if (isNaN(dExam.getTime())) return res.status(400).json({ error: 'Invalid exam date' });
     if (dExam <= dStart) return res.status(400).json({ error: 'exam must be after start' });
     if (req.user.role === 'admin' && !(await Teacher.findById(tid))) return res.status(400).json({ error: 'Invalid tid' });
 
     if ((await Group.countDocuments({ tid, archived: { $ne: true } })) >= 10) return res.status(400).json({ error: 'A teacher cannot have more than 10 active groups' });
 
-    const g = await Group.create({ tid, group: group.trim(), lang, startTime, endTime, start, exam, students: +students, level, doneInLevel, days: days || 'Every Day', autoProgress: true });
+    const g = await Group.create({ tid, group: group.trim(), lang, startTime, endTime, start, exam, students: +students, level, doneInLevel, days: scheduleDays, autoProgress: true, trackMode: trackMode !== false, trackStartLang: trackStartLang || lang });
     res.status(201).json(g.toJSON());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -463,23 +469,28 @@ app.put('/api/groups/:id', auth, async (req, res) => {
       g.students = st;
     }
 
-    const newStart = req.body.start ?? g.start;
-    const newExam = req.body.exam ?? g.exam;
-    if (req.body.start != null || req.body.exam != null) {
-      const dStart = new Date(newStart);
-      const dExam = new Date(newExam);
-      if (isNaN(dStart.getTime()) || isNaN(dExam.getTime())) return res.status(400).json({ error: 'Invalid start or exam date' });
-      if (dExam <= dStart) return res.status(400).json({ error: 'exam must be after start' });
-      if (req.body.start != null) g.start = req.body.start;
-      if (req.body.exam != null) g.exam = req.body.exam;
+    if (req.body.start != null) {
+      const dStart = new Date(req.body.start);
+      if (isNaN(dStart.getTime())) return res.status(400).json({ error: 'Invalid start date' });
+      g.start = req.body.start;
     }
 
+    if (req.body.days != null) g.days = req.body.days;
     if (req.body.group != null) g.group = String(req.body.group).trim();
     if (req.body.lang != null) g.lang = req.body.lang;
     if (req.body.startTime != null) g.startTime = req.body.startTime;
     if (req.body.endTime != null) g.endTime = req.body.endTime;
-    if (req.body.days != null) g.days = req.body.days;
     if (req.body.autoProgress != null) g.autoProgress = !!req.body.autoProgress;
+    if (req.body.trackMode != null) g.trackMode = !!req.body.trackMode;
+    if (req.body.trackStartLang != null) g.trackStartLang = req.body.trackStartLang;
+
+    if (req.body.exam != null) {
+      const dExam = new Date(req.body.exam);
+      if (isNaN(dExam.getTime())) return res.status(400).json({ error: 'Invalid exam date' });
+      g.exam = req.body.exam;
+    } else if (req.body.start != null || req.body.days != null || req.body.lang != null || req.body.level != null) {
+      g.exam = calcExamDate(g.start, g.days, g.lang, g.level, g.trackMode !== false, g.trackStartLang || g.lang);
+    }
 
     await g.save();
     res.json(g.toJSON());
@@ -527,7 +538,9 @@ const SYNC_KEY = process.env.SYNC_KEY || 'edutrack_sync_2026';
 
 function computeElapsedLessons(startDateStr, daysSchedule) {
   if (!startDateStr) return 0;
-  const start = new Date(startDateStr);
+  const parts = startDateStr.split('-').map(Number);
+  if (parts.length < 3 || isNaN(parts[0])) return 0;
+  const start = new Date(parts[0], parts[1] - 1, parts[2]);
   start.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -562,23 +575,92 @@ function getNextSubjectInTrack(currentLang) {
   return null;
 }
 
-function calcExamDate(startDateStr, scheduleMode, lang = 'HTML', level = 1) {
-  const date = new Date(startDateStr);
-  const targetLessons = getLessonsInLevel(lang, level);
-  let lessonsCount = 1;
+function calcLessonDate(startDateStr, scheduleMode = 'Every Day', targetLessons = 1) {
+  if (!startDateStr || targetLessons <= 0) return '';
+  const parts = startDateStr.split('-').map(Number);
+  if (parts.length < 3 || isNaN(parts[0])) return '';
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+
+  let lessonsCount = 0;
   while (lessonsCount < targetLessons) {
-    date.setDate(date.getDate() + 1);
-    const day = date.getDay();
-    if (day !== 0) {
-      if (scheduleMode === 'Odd Days' && (day === 1 || day === 3 || day === 5)) lessonsCount++;
-      else if (scheduleMode === 'Even Days' && (day === 2 || day === 4 || day === 6)) lessonsCount++;
-      else if (scheduleMode === 'Every Day') lessonsCount++;
+    const day = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    let isValid = false;
+    if (day !== 0) { // Sunday skipped
+      if (scheduleMode === 'Even Days' && [2, 4, 6].includes(day)) isValid = true;
+      else if (scheduleMode === 'Odd Days' && [1, 3, 5].includes(day)) isValid = true;
+      else if (scheduleMode === 'Every Day') isValid = true;
     }
+    if (isValid) {
+      lessonsCount++;
+      if (lessonsCount === targetLessons) break;
+    }
+    date.setDate(date.getDate() + 1);
   }
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function calcExamDates(startDateStr, scheduleMode = 'Every Day', lang = 'HTML', level = 1, isTrack = true, trackStartLang = null) {
+  if (!startDateStr) return { currentExamDate: '', finalExamDate: '', exam: '' };
+
+  const trackCategory = PC[trackStartLang || lang]?.category;
+  const sequence = isTrack && trackCategory ? TRACK_SEQUENCES[trackCategory] : null;
+
+  let currentLessonsTarget = 0;
+  let totalTrackLessons = 0;
+
+  if (sequence && sequence.includes(lang)) {
+    const startLang = trackStartLang || sequence[0];
+    const startIdx = sequence.indexOf(startLang);
+    const activeSequence = sequence.slice(startIdx >= 0 ? startIdx : 0);
+
+    let reachedCurrent = false;
+    for (const sLang of activeSequence) {
+      const sCfg = PC[sLang] || { levels: 1 };
+      const sTotalLevels = sCfg.levels;
+      const isCurrentSubject = (sLang === lang);
+
+      if (!reachedCurrent) {
+        if (isCurrentSubject) {
+          for (let lv = 1; lv <= Math.min(level, sTotalLevels); lv++) {
+            currentLessonsTarget += getLessonsInLevel(sLang, lv);
+          }
+          reachedCurrent = true;
+        } else {
+          currentLessonsTarget += totalLessons(sLang);
+        }
+      }
+
+      totalTrackLessons += totalLessons(sLang);
+    }
+    if (!reachedCurrent) {
+      currentLessonsTarget = totalTrackLessons;
+    }
+  } else {
+    const cfg = PC[lang] || { levels: 1 };
+    for (let lv = 1; lv <= Math.min(level, cfg.levels); lv++) {
+      currentLessonsTarget += getLessonsInLevel(lang, lv);
+    }
+    totalTrackLessons = totalLessons(lang);
+  }
+
+  const currentExamDate = calcLessonDate(startDateStr, scheduleMode, currentLessonsTarget) || '';
+  const finalExamDate = calcLessonDate(startDateStr, scheduleMode, totalTrackLessons) || '';
+
+  return {
+    currentExamDate,
+    finalExamDate,
+    exam: currentExamDate,
+    currentLessonsTarget,
+    totalTrackLessons,
+  };
+}
+
+function calcExamDate(startDateStr, scheduleMode = 'Every Day', lang = 'HTML', level = 1, isTrack = true, trackStartLang = null) {
+  const res = calcExamDates(startDateStr, scheduleMode, lang, level, isTrack, trackStartLang);
+  return res.currentExamDate;
 }
 
 function autoProgressGroup(group) {
@@ -610,6 +692,7 @@ function autoProgressGroup(group) {
           curLevel = lv;
           if (remainingLessons <= lpl) {
             curDoneInLevel = remainingLessons;
+            const examInfo = calcExamDates(group.start, group.days, curLang, curLevel, true, group.trackStartLang);
             return {
               lang: curLang,
               level: curLevel,
@@ -617,6 +700,8 @@ function autoProgressGroup(group) {
               totalDone: totalDone(curLang, curLevel, curDoneInLevel),
               trackDone: Math.min(totalTrackLessons, elapsed),
               trackTotal: totalTrackLessons,
+              currentExamDate: examInfo.currentExamDate,
+              finalExamDate: examInfo.finalExamDate,
               isFinished: false,
             };
           } else {
@@ -628,6 +713,7 @@ function autoProgressGroup(group) {
       const lastLang = activeSequence[activeSequence.length - 1];
       const lastCfg = PC[lastLang] || { levels: 1 };
       const lastLpl = getLessonsInLevel(lastLang, lastCfg.levels);
+      const examInfo = calcExamDates(group.start, group.days, lastLang, lastCfg.levels, true, group.trackStartLang);
       return {
         lang: lastLang,
         level: lastCfg.levels,
@@ -635,6 +721,8 @@ function autoProgressGroup(group) {
         totalDone: totalLessons(lastLang),
         trackDone: totalTrackLessons,
         trackTotal: totalTrackLessons,
+        currentExamDate: examInfo.currentExamDate,
+        finalExamDate: examInfo.finalExamDate,
         isFinished: true,
       };
     }
@@ -643,11 +731,14 @@ function autoProgressGroup(group) {
   const maxLevels = PC[group.lang]?.levels || 1;
   const tl = totalLessons(group.lang);
   if (elapsed === 0) {
+    const examInfo = calcExamDates(group.start, group.days, group.lang, group.level, false);
     return {
       lang: group.lang,
       level: group.level,
       doneInLevel: group.doneInLevel,
       totalDone: totalDone(group.lang, group.level, group.doneInLevel),
+      currentExamDate: examInfo.currentExamDate,
+      finalExamDate: examInfo.finalExamDate,
     };
   }
   const effectiveElapsed = Math.min(tl, elapsed);
@@ -668,11 +759,14 @@ function autoProgressGroup(group) {
       }
     }
   }
+  const examInfo = calcExamDates(group.start, group.days, group.lang, curLevel, false);
   return {
     lang: group.lang,
     level: curLevel,
     doneInLevel: curDoneInLevel,
     totalDone: effectiveElapsed,
+    currentExamDate: examInfo.currentExamDate,
+    finalExamDate: examInfo.finalExamDate,
   };
 }
 

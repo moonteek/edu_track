@@ -60,7 +60,16 @@ export default function GroupRow({ group, onEdit, onDelete, onArchive, selected,
             <td className="td-m">{group.startTime || '–'} – {group.endTime || '–'}</td>
             <td className="td-m">{group.days || 'Every Day'}</td>
             <td>{fmtDate(group.start)}</td>
-            <td>{fmtDate(group.exam)}</td>
+            <td>
+                <div style={{ fontWeight: 600, color: 'var(--fg)', fontSize: '13px' }}>
+                    {fmtDate(auto?.currentExamDate || group.exam)}
+                </div>
+                {auto?.finalExamDate && auto.finalExamDate !== (auto?.currentExamDate || group.exam) && (
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '3px' }} title="Overall Track Graduation Date">
+                        <span style={{ opacity: 0.7, color: 'var(--yellow)' }}>Grad:</span> {fmtDate(auto.finalExamDate)}
+                    </div>
+                )}
+            </td>
             <td className="td-n">{group.students}</td>
             <td className="td-m">{done}/{tl}</td>
             <td><LevelBar group={group} mode="table" /></td>

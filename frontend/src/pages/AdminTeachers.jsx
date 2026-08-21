@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, getLessonsInLevel } from '../constants';
+import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, calcExamDates, getLessonsInLevel, fmtDate, autoProgress, computeElapsedLessons } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 import TeacherCard from '../components/TeacherCard';
@@ -140,9 +140,60 @@ export default function AdminTeachers({ token, onLogout }) {
     function setGField(key, val) {
         setGForm(f => {
             const next = { ...f, [key]: val };
-            if ((key === 'start' || key === 'days' || key === 'lang' || key === 'level') && next.start && next.days) {
-                try { next.exam = calcExamDate(next.start, next.days, next.lang || 'HTML', next.level || 1); } catch { }
+
+            // When start or schedule days change, auto-progress the subject, level, doneInLevel, and exam dates
+            if ((key === 'start' || key === 'days') && next.start && next.days && next.lang) {
+                try {
+                    const prog = autoProgress({
+                        start: next.start,
+                        days: next.days,
+                        lang: next.lang,
+                        level: 1,
+                        doneInLevel: 0,
+                        trackMode: true,
+                        trackStartLang: next.lang,
+                    });
+                    if (prog) {
+                        next.lang = prog.lang;
+                        next.level = prog.level;
+                        next.doneInLevel = prog.doneInLevel;
+                        next.exam = prog.currentExamDate || calcExamDate(next.start, next.days, prog.lang, prog.level, true);
+                        next.finalExam = prog.finalExamDate;
+                    }
+                } catch { }
+            } else if (key === 'lang') {
+                next.level = 1;
+                next.doneInLevel = 0;
+                if (next.start && next.days) {
+                    try {
+                        const prog = autoProgress({
+                            start: next.start,
+                            days: next.days,
+                            lang: val,
+                            level: 1,
+                            doneInLevel: 0,
+                            trackMode: true,
+                            trackStartLang: val,
+                        });
+                        if (prog) {
+                            next.lang = prog.lang;
+                            next.level = prog.level;
+                            next.doneInLevel = prog.doneInLevel;
+                            next.exam = prog.currentExamDate || calcExamDate(next.start, next.days, prog.lang, prog.level, true);
+                            next.finalExam = prog.finalExamDate;
+                        }
+                    } catch { }
+                }
+            } else if (key === 'level') {
+                if (next.start && next.days && next.lang) {
+                    try {
+                        const examInfo = calcExamDates(next.start, next.days, next.lang, next.level || 1, true);
+                        next.exam = examInfo.currentExamDate;
+                        next.finalExam = examInfo.finalExamDate;
+                    } catch { }
+                }
             }
+
             if (key === 'startTime' || key === 'lang') {
                 const isKids = next.lang === 'Python (Kids)' || next.lang === 'Scratch';
                 const dur = isKids ? 90 : 120;
@@ -152,7 +203,6 @@ export default function AdminTeachers({ token, onLogout }) {
                     next.endTime = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
                 }
             }
-            if (key === 'lang') { next.level = 1; next.doneInLevel = 0; }
             return next;
         });
     }
@@ -627,6 +677,34 @@ export default function AdminTeachers({ token, onLogout }) {
                             <input className="f-input" type="text" placeholder="e.g. JS-101" value={gForm.group} onChange={e => setGField('group', e.target.value)} />
                         </div>
                         <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label" title="Overall cohort start date">Overall Start Date <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <input className="f-input" type="date" value={gForm.start} onChange={e => setGField('start', e.target.value)} />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Days <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <select className="f-select" value={gForm.days} onChange={e => setGField('days', e.target.value)}>
+                                {DAYS_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                        </div>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">Start Time <span style={{ color: 'var(--red)' }}>*</span></label>
+                            <select className="f-select" value={gForm.startTime} onChange={e => setGField('startTime', e.target.value)}>
+                                <option value="">–</option>
+                                {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </div>
+                        <div className="f-group" style={{ margin: 0 }}>
+                            <label className="f-label">End Time</label>
+                            <input className="f-input" type="text" value={gForm.endTime} readOnly
+                                style={{ opacity: 0.6, cursor: 'default' }} placeholder="Auto-calculated" />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: gForm.lang ? '1.2fr 0.9fr 0.9fr' : '1fr', gap: '12px', marginTop: '12px' }}>
+                        <div className="f-group" style={{ margin: 0 }}>
                             <label className="f-label">Subject <span style={{ color: 'var(--red)' }}>*</span></label>
                             <select className="f-select" value={gForm.lang} onChange={e => setGField('lang', e.target.value)}>
                                 <option value="">Select subject</option>
@@ -640,55 +718,29 @@ export default function AdminTeachers({ token, onLogout }) {
                                 })}
                             </select>
                         </div>
+                        {gForm.lang && (() => {
+                            const maxDoneInLevel = getLessonsInLevel(gForm.lang, gForm.level);
+                            const maxLevel = PC[gForm.lang]?.levels || 1;
+                            return (
+                                <>
+                                    <div className="f-group" style={{ margin: 0 }}>
+                                        <label className="f-label">Level (1 – {maxLevel})</label>
+                                        <input className="f-input" type="number" min="1" max={maxLevel} value={gForm.level}
+                                            onChange={e => setGField('level', Math.min(maxLevel, Math.max(1, +e.target.value)))} />
+                                    </div>
+                                    <div className="f-group" style={{ margin: 0 }}>
+                                        <label className="f-label">Done (0 – {maxDoneInLevel})</label>
+                                        <input className="f-input" type="number" min="0" max={maxDoneInLevel} value={gForm.doneInLevel}
+                                            onChange={e => setGField('doneInLevel', Math.min(maxDoneInLevel, Math.max(0, +e.target.value)))} />
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
 
-                    {gForm.lang && (() => {
-                        const maxDoneInLevel = getLessonsInLevel(gForm.lang, gForm.level);
-                        const maxLevel = PC[gForm.lang]?.levels || 1;
-                        return (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
-                                <div className="f-group" style={{ margin: 0 }}>
-                                    <label className="f-label">Level (1 – {maxLevel})</label>
-                                    <input className="f-input" type="number" min="1" max={maxLevel} value={gForm.level}
-                                        onChange={e => setGField('level', Math.min(maxLevel, Math.max(1, +e.target.value)))} />
-                                </div>
-                                <div className="f-group" style={{ margin: 0 }}>
-                                    <label className="f-label">Done in Level (0 – {maxDoneInLevel})</label>
-                                    <input className="f-input" type="number" min="0" max={maxDoneInLevel} value={gForm.doneInLevel}
-                                        onChange={e => setGField('doneInLevel', Math.min(maxDoneInLevel, Math.max(0, +e.target.value)))} />
-                                </div>
-                            </div>
-                        );
-                    })()}
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
                         <div className="f-group" style={{ margin: 0 }}>
-                            <label className="f-label">Start Time <span style={{ color: 'var(--red)' }}>*</span></label>
-                            <select className="f-select" value={gForm.startTime} onChange={e => setGField('startTime', e.target.value)}>
-                                <option value="">–</option>
-                                {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </div>
-                        <div className="f-group" style={{ margin: 0 }}>
-                            <label className="f-label">End Time</label>
-                            <input className="f-input" type="text" value={gForm.endTime} readOnly
-                                style={{ opacity: 0.6, cursor: 'default' }} placeholder="Auto-calculated" />
-                        </div>
-                        <div className="f-group" style={{ margin: 0 }}>
-                            <label className="f-label">Days <span style={{ color: 'var(--red)' }}>*</span></label>
-                            <select className="f-select" value={gForm.days} onChange={e => setGField('days', e.target.value)}>
-                                {DAYS_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
-                        <div className="f-group" style={{ margin: 0 }}>
-                            <label className="f-label">Start Date <span style={{ color: 'var(--red)' }}>*</span></label>
-                            <input className="f-input" type="date" value={gForm.start} onChange={e => setGField('start', e.target.value)} />
-                        </div>
-                        <div className="f-group" style={{ margin: 0 }}>
-                            <label className="f-label">Exam Date</label>
+                            <label className="f-label" title="Exam date for current subject & level">Next Exam Date</label>
                             <input className="f-input" type="date" value={gForm.exam} onChange={e => setGField('exam', e.target.value)}
                                 style={{ opacity: gForm.start ? 1 : 0.5 }} />
                         </div>
@@ -698,6 +750,50 @@ export default function AdminTeachers({ token, onLogout }) {
                                 onChange={e => setGField('students', e.target.value)} />
                         </div>
                     </div>
+
+                    {/* Auto-Calculated Dates Info Banner */}
+                    {gForm.start && gForm.days && (() => {
+                        const elapsed = computeElapsedLessons(gForm.start, gForm.days);
+                        const maxL = gForm.lang ? getLessonsInLevel(gForm.lang, gForm.level) : 13;
+                        return (
+                            <div style={{
+                                marginTop: '12px',
+                                padding: '12px 14px',
+                                background: 'rgba(99,102,241,0.06)',
+                                border: '1px solid rgba(99,102,241,0.2)',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                fontFamily: 'var(--fm)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '6px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <span style={{ color: 'var(--muted)' }}>Elapsed: </span>
+                                        <strong style={{ color: '#4caf50' }}>{elapsed} lessons passed</strong>
+                                        {gForm.lang && (
+                                            <span style={{ marginLeft: '8px', color: 'var(--fg)', opacity: 0.85 }}>
+                                                ({gForm.lang} Lv{gForm.level} • {gForm.doneInLevel}/{maxL} done)
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '6px' }}>
+                                    <div>
+                                        <span style={{ color: 'var(--muted)' }}>Next Level Exam: </span>
+                                        <strong style={{ color: 'var(--fg)' }}>{fmtDate(gForm.exam)}</strong>
+                                    </div>
+                                    {gForm.finalExam && (
+                                        <div>
+                                            <span style={{ color: 'var(--muted)' }}>Final Graduation: </span>
+                                            <strong style={{ color: 'var(--yellow)' }}>{fmtDate(gForm.finalExam)}</strong>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {gFormError && (
                         <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '13px', fontFamily: 'var(--fm)' }}>

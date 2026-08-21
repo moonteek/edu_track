@@ -150,9 +150,11 @@ export function getStudentsAndGraduationsData(groups = [], teachers = []) {
         'Overall Completion Rate (%)',
         'Schedule Mode',
         'Time Slot',
-        'Start Date',
-        'Exam Date',
-        'Days Until Exam',
+        'Cohort Start Date',
+        'Next Exam Date',
+        'Days Until Next Exam',
+        'Final Graduation Date',
+        'Days Until Graduation',
         'Status'
     ];
 
@@ -170,23 +172,35 @@ export function getStudentsAndGraduationsData(groups = [], teachers = []) {
         const currentStageName = `${g.lang} - Level ${curLevel} of ${cfg.levels}`;
         const levelProgressText = `${curDoneInLevel} / ${maxLevelLessons} lessons`;
 
-        let daysRemaining = 'N/A';
+        const nextExamDateStr = auto?.currentExamDate || g.exam;
+        const finalGradDateStr = auto?.finalExamDate || g.exam;
+
+        let daysUntilNextExam = 'N/A';
+        let daysUntilGrad = 'N/A';
         let status = 'In Progress';
 
-        if (g.exam) {
-            const examDate = new Date(g.exam);
+        if (nextExamDateStr) {
+            const examDate = new Date(nextExamDateStr);
             examDate.setHours(0, 0, 0, 0);
             const diffTime = examDate.getTime() - todayDate.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            daysRemaining = diffDays >= 0 ? `${diffDays} days` : `Passed (${Math.abs(diffDays)}d ago)`;
+            daysUntilNextExam = diffDays >= 0 ? `${diffDays} days` : `Passed (${Math.abs(diffDays)}d ago)`;
 
             if (progressPct === 100) {
                 status = 'Graduated / Completed';
             } else if (diffDays <= 7 && diffDays >= 0) {
-                status = 'Graduating Soon (Exam in <7d)';
+                status = 'Next Exam Soon (<7d)';
             } else if (diffDays < 0) {
-                status = 'Exam Date Passed';
+                status = 'Level Exam Passed';
             }
+        }
+
+        if (finalGradDateStr) {
+            const gradDate = new Date(finalGradDateStr);
+            gradDate.setHours(0, 0, 0, 0);
+            const diffTime = gradDate.getTime() - todayDate.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            daysUntilGrad = diffDays >= 0 ? `${diffDays} days` : `Graduated (${Math.abs(diffDays)}d ago)`;
         }
 
         return [
@@ -204,8 +218,10 @@ export function getStudentsAndGraduationsData(groups = [], teachers = []) {
             g.days || 'Every Day',
             `${g.startTime || '–'} - ${g.endTime || '–'}`,
             g.start || '-',
-            g.exam || '-',
-            daysRemaining,
+            nextExamDateStr || '-',
+            daysUntilNextExam,
+            finalGradDateStr || '-',
+            daysUntilGrad,
             status
         ];
     });

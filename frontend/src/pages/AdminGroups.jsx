@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, autoProgress, getLessonsInLevel } from '../constants';
+import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, calcExamDates, autoProgress, getLessonsInLevel, fmtDate, computeElapsedLessons } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 import GroupRow from '../components/GroupRow';
@@ -112,10 +112,60 @@ export default function AdminGroups({ token, onLogout }) {
     function setField(key, val) {
         setForm(f => {
             const next = { ...f, [key]: val };
-            // Auto-calc exam when start or days or lang or level change
-            if ((key === 'start' || key === 'days' || key === 'lang' || key === 'level') && next.start && next.days) {
-                try { next.exam = calcExamDate(next.start, next.days, next.lang || 'HTML', next.level || 1); } catch { /* ignore */ }
+
+            // When start or schedule days change, auto-progress the subject, level, doneInLevel, and exam dates
+            if ((key === 'start' || key === 'days') && next.start && next.days && next.lang) {
+                try {
+                    const prog = autoProgress({
+                        start: next.start,
+                        days: next.days,
+                        lang: next.lang,
+                        level: 1,
+                        doneInLevel: 0,
+                        trackMode: true,
+                        trackStartLang: next.lang,
+                    });
+                    if (prog) {
+                        next.lang = prog.lang;
+                        next.level = prog.level;
+                        next.doneInLevel = prog.doneInLevel;
+                        next.exam = prog.currentExamDate || calcExamDate(next.start, next.days, prog.lang, prog.level, true);
+                        next.finalExam = prog.finalExamDate;
+                    }
+                } catch { /* ignore */ }
+            } else if (key === 'lang') {
+                next.level = 1;
+                next.doneInLevel = 0;
+                if (next.start && next.days) {
+                    try {
+                        const prog = autoProgress({
+                            start: next.start,
+                            days: next.days,
+                            lang: val,
+                            level: 1,
+                            doneInLevel: 0,
+                            trackMode: true,
+                            trackStartLang: val,
+                        });
+                        if (prog) {
+                            next.lang = prog.lang;
+                            next.level = prog.level;
+                            next.doneInLevel = prog.doneInLevel;
+                            next.exam = prog.currentExamDate || calcExamDate(next.start, next.days, prog.lang, prog.level, true);
+                            next.finalExam = prog.finalExamDate;
+                        }
+                    } catch { /* ignore */ }
+                }
+            } else if (key === 'level') {
+                if (next.start && next.days && next.lang) {
+                    try {
+                        const examInfo = calcExamDates(next.start, next.days, next.lang, next.level || 1, true);
+                        next.exam = examInfo.currentExamDate;
+                        next.finalExam = examInfo.finalExamDate;
+                    } catch { /* ignore */ }
+                }
             }
+
             // Auto-calc endTime when startTime or lang changes
             if (key === 'startTime' || key === 'lang') {
                 const isKids = next.lang === 'Python (Kids)' || next.lang === 'Scratch';
@@ -126,21 +176,20 @@ export default function AdminGroups({ token, onLogout }) {
                     next.endTime = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
                 }
             }
-            // Reset level when lang changes
-            if (key === 'lang') { next.level = 1; next.doneInLevel = 0; }
             return next;
         });
     }
 
     function openCreate() {
         setEditingId(null);
-        setForm({ ...EMPTY_FORM, tid: (teachers && teachers[0]?.id) || '' });
+        setForm({ ...EMPTY_FORM, tid: (teachers && teachers[0]?.id) || '', finalExam: '' });
         setFormError('');
         setModalOpen(true);
     }
 
     function openEdit(group) {
         setEditingId(group.id || group._id);
+        const examInfo = calcExamDates(group.start, group.days || 'Odd Days', group.lang || 'HTML', group.level || 1, group.trackMode !== false, group.trackStartLang);
         setForm({
             tid: group.tid || '',
             group: group.group || '',
@@ -151,7 +200,8 @@ export default function AdminGroups({ token, onLogout }) {
             endTime: group.endTime || '',
             days: group.days || 'Odd Days',
             start: group.start ? group.start.substring(0, 10) : '',
-            exam: group.exam ? group.exam.substring(0, 10) : '',
+            exam: group.exam ? group.exam.substring(0, 10) : (examInfo.currentExamDate || ''),
+            finalExam: examInfo.finalExamDate || '',
             students: group.students || '',
             autoProgress: group.autoProgress || false,
         });
@@ -462,46 +512,26 @@ export default function AdminGroups({ token, onLogout }) {
                     </select>
                 </div>
 
-                {/* Two columns: Group name + Subject */}
+                {/* Two columns: Group name + Overall Start Date */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div className="f-group" style={{ margin: 0 }}>
                         <label className="f-label">Group Name <span style={{ color: 'var(--red)' }}>*</span></label>
                         <input className="f-input" type="text" placeholder="e.g. JS-101" value={form.group} onChange={e => setField('group', e.target.value)} />
                     </div>
                     <div className="f-group" style={{ margin: 0 }}>
-                        <label className="f-label">Subject <span style={{ color: 'var(--red)' }}>*</span></label>
-                        <select className="f-select" value={form.lang} onChange={e => setField('lang', e.target.value)}>
-                            <option value="">Select subject</option>
-                            {Object.entries(MODULES).map(([cat, courses]) => (
-                                <optgroup key={cat} label={cat}>
-                                    {courses.map(c => <option key={c} value={c}>{c}</option>)}
-                                </optgroup>
-                            ))}
-                        </select>
+                        <label className="f-label" title="Overall cohort start date">Overall Start Date <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <input className="f-input" type="date" value={form.start} onChange={e => setField('start', e.target.value)} />
                     </div>
                 </div>
 
-                {/* Level + Done in level */}
-                {form.lang && (() => {
-                    const maxDoneInLevel = getLessonsInLevel(form.lang, form.level);
-                    return (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                            <div className="f-group" style={{ margin: 0 }}>
-                                <label className="f-label">Level (1 – {maxLevel})</label>
-                                <input className="f-input" type="number" min="1" max={maxLevel} value={form.level}
-                                    onChange={e => setField('level', Math.min(maxLevel, Math.max(1, +e.target.value)))} />
-                            </div>
-                            <div className="f-group" style={{ margin: 0 }}>
-                                <label className="f-label">Done in Level (0 – {maxDoneInLevel})</label>
-                                <input className="f-input" type="number" min="0" max={maxDoneInLevel} value={form.doneInLevel}
-                                    onChange={e => setField('doneInLevel', Math.min(maxDoneInLevel, Math.max(0, +e.target.value)))} />
-                            </div>
-                        </div>
-                    );
-                })()}
-
-                {/* Schedule row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                {/* Schedule row: Days + Start Time + End Time */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+                    <div className="f-group" style={{ margin: 0 }}>
+                        <label className="f-label">Days <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <select className="f-select" value={form.days} onChange={e => setField('days', e.target.value)}>
+                            {DAYS_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                    </div>
                     <div className="f-group" style={{ margin: 0 }}>
                         <label className="f-label">Start Time <span style={{ color: 'var(--red)' }}>*</span></label>
                         <select className="f-select" value={form.startTime} onChange={e => setField('startTime', e.target.value)}>
@@ -514,22 +544,44 @@ export default function AdminGroups({ token, onLogout }) {
                         <input className="f-input" type="text" value={form.endTime} readOnly
                             style={{ opacity: 0.6, cursor: 'default' }} placeholder="Auto-calculated" />
                     </div>
-                    <div className="f-group" style={{ margin: 0 }}>
-                        <label className="f-label">Days <span style={{ color: 'var(--red)' }}>*</span></label>
-                        <select className="f-select" value={form.days} onChange={e => setField('days', e.target.value)}>
-                            {DAYS_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                    </div>
                 </div>
 
-                {/* Dates + Students */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                {/* Subject + Level + Done in level */}
+                <div style={{ display: 'grid', gridTemplateColumns: form.lang ? '1.2fr 0.9fr 0.9fr' : '1fr', gap: '12px', marginTop: '12px' }}>
                     <div className="f-group" style={{ margin: 0 }}>
-                        <label className="f-label">Start Date <span style={{ color: 'var(--red)' }}>*</span></label>
-                        <input className="f-input" type="date" value={form.start} onChange={e => setField('start', e.target.value)} />
+                        <label className="f-label">Subject <span style={{ color: 'var(--red)' }}>*</span></label>
+                        <select className="f-select" value={form.lang} onChange={e => setField('lang', e.target.value)}>
+                            <option value="">Select subject</option>
+                            {Object.entries(MODULES).map(([cat, courses]) => (
+                                <optgroup key={cat} label={cat}>
+                                    {courses.map(c => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                            ))}
+                        </select>
                     </div>
+                    {form.lang && (() => {
+                        const maxDoneInLevel = getLessonsInLevel(form.lang, form.level);
+                        return (
+                            <>
+                                <div className="f-group" style={{ margin: 0 }}>
+                                    <label className="f-label">Level (1 – {maxLevel})</label>
+                                    <input className="f-input" type="number" min="1" max={maxLevel} value={form.level}
+                                        onChange={e => setField('level', Math.min(maxLevel, Math.max(1, +e.target.value)))} />
+                                </div>
+                                <div className="f-group" style={{ margin: 0 }}>
+                                    <label className="f-label">Done (0 – {maxDoneInLevel})</label>
+                                    <input className="f-input" type="number" min="0" max={maxDoneInLevel} value={form.doneInLevel}
+                                        onChange={e => setField('doneInLevel', Math.min(maxDoneInLevel, Math.max(0, +e.target.value)))} />
+                                </div>
+                            </>
+                        );
+                    })()}
+                </div>
+
+                {/* Next Exam + Students */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
                     <div className="f-group" style={{ margin: 0 }}>
-                        <label className="f-label">Exam Date</label>
+                        <label className="f-label" title="Exam date for current subject & level">Next Exam Date</label>
                         <input className="f-input" type="date" value={form.exam} onChange={e => setField('exam', e.target.value)}
                             style={{ opacity: form.start ? 1 : 0.5 }} />
                     </div>
@@ -539,6 +591,50 @@ export default function AdminGroups({ token, onLogout }) {
                             onChange={e => setField('students', e.target.value)} />
                     </div>
                 </div>
+
+                {/* Auto-Calculated Dates Info Banner */}
+                {form.start && form.days && (() => {
+                    const elapsed = computeElapsedLessons(form.start, form.days);
+                    const maxL = form.lang ? getLessonsInLevel(form.lang, form.level) : 13;
+                    return (
+                        <div style={{
+                            marginTop: '12px',
+                            padding: '12px 14px',
+                            background: 'rgba(99,102,241,0.06)',
+                            border: '1px solid rgba(99,102,241,0.2)',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontFamily: 'var(--fm)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <span style={{ color: 'var(--muted)' }}>Elapsed: </span>
+                                    <strong style={{ color: '#4caf50' }}>{elapsed} lessons passed</strong>
+                                    {form.lang && (
+                                        <span style={{ marginLeft: '8px', color: 'var(--fg)', opacity: 0.85 }}>
+                                            ({form.lang} Lv{form.level} • {form.doneInLevel}/{maxL} done)
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '6px' }}>
+                                <div>
+                                    <span style={{ color: 'var(--muted)' }}>Next Level Exam: </span>
+                                    <strong style={{ color: 'var(--fg)' }}>{fmtDate(form.exam)}</strong>
+                                </div>
+                                {form.finalExam && (
+                                    <div>
+                                        <span style={{ color: 'var(--muted)' }}>Final Graduation: </span>
+                                        <strong style={{ color: 'var(--yellow)' }}>{fmtDate(form.finalExam)}</strong>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {formError && (
                     <div style={{ marginTop: '8px', padding: '10px 14px', background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.3)', borderRadius: '8px', color: 'var(--red)', fontSize: '13px', fontFamily: 'var(--fm)' }}>
