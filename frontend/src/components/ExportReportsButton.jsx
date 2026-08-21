@@ -37,13 +37,14 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
             const cfg = await api('GET', '/api/sync/config', null, token, onLogout);
             setSyncConfig(cfg);
         } catch {
-            const baseUrl = window.location.origin.includes('localhost') ? 'http://localhost:5000' : 'https://edu-track-x27a.onrender.com';
+            const baseUrl = import.meta.env.VITE_API_URL || (window.location.origin.includes('localhost') ? 'http://localhost:5000' : 'https://edu-track-backend.onrender.com');
             setSyncConfig({
                 syncKey: 'edutrack_sync_2026',
                 urls: {
                     students: `${baseUrl}/api/sync/students?key=edutrack_sync_2026`,
                     teachers: `${baseUrl}/api/sync/teachers?key=edutrack_sync_2026`,
                     courses: `${baseUrl}/api/sync/courses?key=edutrack_sync_2026`,
+                    schedule: `${baseUrl}/api/sync/schedule?key=edutrack_sync_2026`,
                 }
             });
         }

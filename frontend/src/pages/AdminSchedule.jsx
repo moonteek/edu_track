@@ -238,14 +238,20 @@ export default function AdminSchedule({ token }) {
 
                     {/* ── Google Sheets Live Sync Button ── */}
                     <button
-                        onClick={() => {
-                            const origin = window.location.origin.includes('localhost')
-                                ? 'https://edu-track-x27a.onrender.com'
-                                : window.location.origin;
-                            const syncUrl = `${origin}/api/sync/schedule?key=edutrack_sync_2026`;
-                            const formula = `=IMPORTDATA("${syncUrl}")`;
-                            navigator.clipboard.writeText(formula);
-                            showToast('📋 Live Google Sheets Formula copied! Paste into cell A1 in Google Sheets.');
+                        onClick={async () => {
+                            try {
+                                const cfg = await api('GET', '/api/sync/config', null, token);
+                                const syncUrl = cfg?.urls?.schedule || `${import.meta.env.VITE_API_URL || 'https://edu-track-backend.onrender.com'}/api/sync/schedule?key=edutrack_sync_2026`;
+                                const formula = `=IMPORTDATA("${syncUrl}")`;
+                                navigator.clipboard.writeText(formula);
+                                showToast('📋 Live Google Sheets Formula copied! Paste into cell A1 in Google Sheets.');
+                            } catch {
+                                const base = import.meta.env.VITE_API_URL || 'https://edu-track-backend.onrender.com';
+                                const syncUrl = `${base}/api/sync/schedule?key=edutrack_sync_2026`;
+                                const formula = `=IMPORTDATA("${syncUrl}")`;
+                                navigator.clipboard.writeText(formula);
+                                showToast('📋 Live Google Sheets Formula copied! Paste into cell A1 in Google Sheets.');
+                            }
                         }}
                         title="Copy Live Google Sheets formula (auto-updates in real-time)"
                         style={{
