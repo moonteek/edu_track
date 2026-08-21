@@ -588,7 +588,7 @@ app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
 
     const headers = [
       'Group Name',
-      'Subject & Current Stage',
+      'Subject',
       'Level Progress Bar',
       'Current Level',
       'Lessons Done This Level',
@@ -617,7 +617,6 @@ app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
       const cfg = PC[g.lang] || { levels: 1, category: 'General' };
       const maxLevelLessons = getLessonsInLevel(g.lang, curLevel);
 
-      const currentStageName = `${g.lang} - Level ${curLevel} of ${cfg.levels}`;
       const levelVisual = getLevelVisual(curLevel, cfg.levels);
       const levelProgressText = `${curDoneInLevel} / ${maxLevelLessons} lessons`;
       const totalLessonsText = `${done} / ${tl} lessons`;
@@ -644,7 +643,7 @@ app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
 
       return [
         escapeCSV(g.group),
-        escapeCSV(currentStageName),
+        escapeCSV(g.lang),
         escapeCSV(levelVisual),
         `Level ${curLevel} of ${cfg.levels}`,
         escapeCSV(levelProgressText),
@@ -652,9 +651,9 @@ app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
         `="${progressPct}%"`,
         escapeCSV(status),
         escapeCSV(teacherMap[g.tid] || 'Unknown Teacher'),
-        escapeCSV(g.exam ? ` ${g.exam}` : '-'),
+        g.exam ? `="${g.exam}"` : '"–"',
         escapeCSV(daysRemaining),
-        escapeCSV(g.start ? ` ${g.start}` : '-'),
+        g.start ? `="${g.start}"` : '"–"',
         escapeCSV(g.days || 'Every Day'),
         escapeCSV(`${g.startTime || '–'} - ${g.endTime || '–'}`),
         g.students || 0,
