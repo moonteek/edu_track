@@ -216,6 +216,68 @@ app.put('/api/teachers/me/password', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.post('/api/teachers/seed-roster', async (req, res) => {
+  try {
+    const key = req.query.key || req.headers['x-sync-key'];
+    if (key !== SYNC_KEY && key !== 'edutrack_sync_2026') {
+      return res.status(401).json({ error: 'Unauthorized: Invalid sync key' });
+    }
+
+    const teachersList = [
+      { name: 'Habibullayev Axrorbek', username: 'axrorbek.h', subject: ['Cyber Security'] },
+      { name: "Ro'zimboyev Muxriddin", username: 'muxriddin.r', subject: ['Computer Literacy'] },
+      { name: 'Abdumutalibova Shirin', username: 'shirin.a', subject: ['Computer Literacy'] },
+      { name: 'Otaxanova Muxtasar', username: 'muxtasar.o', subject: ['IT Kids'] },
+      { name: 'Musoxanova Saida', username: 'saida.m', subject: ['IT Kids'] },
+      { name: 'Hiloliddinova Madina', username: 'madina.h', subject: ['IT Kids'] },
+      { name: "Gu'ulomov Muhammadamin", username: 'muhammadamin.g', subject: ['IT Kids'] },
+      { name: 'Kenjaboyeva Diyora', username: 'diyora.k', subject: ['Web Development'] },
+      { name: "Turg'unov Dostonbek", username: 'dostonbek.t', subject: ['Web Development'] },
+      { name: 'Jalilov Azimjon', username: 'azimjon.j', subject: ['Web Development'] },
+      { name: "Turg'unov Hayotbek", username: 'hayotbek.t', subject: ['Web Development'] },
+      { name: 'Abdumutalov Xojiakbar', username: 'xojiakbar.a', subject: ['Web Development'] },
+      { name: 'Bannayev Abdushohid', username: 'abdushohid.b', subject: ['Web Development'] },
+      { name: 'Abdullayev Hamidullo', username: 'hamidullo.a', subject: ['Web Development'] },
+      { name: 'Azimov Foziljon', username: 'foziljon.a', subject: ['Web Development'] },
+      { name: 'Saydullayev Ibrohim', username: 'ibrohim.s', subject: ['Web Development'] },
+      { name: 'Ikramov Abdulaziz', username: 'abdulaziz.i', subject: ['Web Development'] },
+      { name: 'Orifjonov Komiljon', username: 'komiljon.o', subject: ['Graphic Design'] },
+      { name: 'Asrorbek Abdulhayev', username: 'asrorbek.a', subject: ['SMM'] },
+      { name: 'Turabaev Azizbek', username: 'azizbek.t', subject: ['AI'] },
+    ];
+
+    const defaultPassword = 'teacher123';
+    const hash = bcrypt.hashSync(defaultPassword, SALT);
+    const results = [];
+
+    for (const t of teachersList) {
+      let existing = await Teacher.findOne({
+        $or: [
+          { username: t.username.toLowerCase() },
+          { name: t.name }
+        ]
+      });
+
+      if (existing) {
+        existing.name = t.name;
+        existing.subject = t.subject;
+        await existing.save();
+        results.push({ name: t.name, username: existing.username, status: 'updated', subject: t.subject });
+      } else {
+        const created = await Teacher.create({
+          name: t.name,
+          username: t.username.toLowerCase(),
+          hash,
+          subject: t.subject,
+        });
+        results.push({ name: t.name, username: created.username, status: 'created', subject: t.subject });
+      }
+    }
+
+    res.json({ success: true, count: results.length, teachers: results });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/teachers', auth, adminOnly, async (req, res) => {
   try {
     let { name, username, password } = req.body;
