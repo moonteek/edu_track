@@ -37,7 +37,7 @@ export default function ExportReportsButton({ token, onLogout, teachers: propTea
             const cfg = await api('GET', '/api/sync/config', null, token, onLogout);
             setSyncConfig(cfg);
         } catch {
-            const baseUrl = import.meta.env.VITE_API_URL || (window.location.origin.includes('localhost') ? 'http://localhost:5000' : 'https://edu-track-backend.onrender.com');
+            const baseUrl = import.meta.env.VITE_API_URL || (window.location.origin.includes('localhost') ? 'http://localhost:5000' : 'https://edu-track-x27a.onrender.com');
             setSyncConfig({
                 syncKey: 'edutrack_sync_2026',
                 urls: {
