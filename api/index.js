@@ -548,6 +548,32 @@ app.get('/api/sync/config', auth, adminOnly, (req, res) => {
   });
 });
 
+function getTrackContext(lang, level) {
+  const webDevTrack = [
+    { lang: 'HTML', levels: 1, startMonth: 1 },
+    { lang: 'CSS', levels: 2, startMonth: 2 },
+    { lang: 'JavaScript', levels: 3, startMonth: 4 },
+    { lang: 'TypeScript', levels: 1, startMonth: 7 },
+    { lang: 'React JS', levels: 3, startMonth: 8 },
+    { lang: 'Node JS', levels: 3, startMonth: 11 },
+    { lang: 'Web Prompt', levels: 1, startMonth: 14 },
+  ];
+  const mod = webDevTrack.find(m => m.lang === lang);
+  if (mod) {
+    const month = mod.startMonth + (level - 1);
+    return `Web Dev Track (Month ${month} of 14)`;
+  }
+  return PC[lang]?.category || 'General';
+}
+
+function getLevelVisual(level, maxLevels) {
+  const max = maxLevels || 1;
+  const filled = Math.min(max, Math.max(0, level));
+  const empty = Math.max(0, max - filled);
+  const bar = '■'.repeat(filled) + '□'.repeat(empty);
+  return `Lv ${level}/${max} [${bar}]`;
+}
+
 app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
   try {
     const todayDate = new Date();
@@ -562,22 +588,22 @@ app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
 
     const headers = [
       'Group Name',
-      'Teacher',
-      'Subject / Course',
-      'Department / Category',
-      'Current Stage (Subject & Level)',
+      'Subject & Current Stage',
+      'Level Progress Bar',
       'Current Level',
-      'Max Levels in Course',
-      'Level Progress (Done/Total in Level)',
+      'Lessons Done This Level',
       'Total Course Lessons Done',
-      'Total Course Lessons',
-      'Overall Completion Rate (%)',
-      'Schedule Mode',
-      'Time Slot',
-      'Start Date',
+      'Overall Completion Rate',
+      'Status',
+      'Teacher',
       'Exam Date',
       'Days Until Exam',
-      'Status'
+      'Start Date',
+      'Schedule Mode',
+      'Time Slot',
+      'Students Count',
+      'Curriculum Track Context',
+      'Department / Category'
     ];
 
     const rows = groups.map(g => {
@@ -592,7 +618,10 @@ app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
       const maxLevelLessons = getLessonsInLevel(g.lang, curLevel);
 
       const currentStageName = `${g.lang} - Level ${curLevel} of ${cfg.levels}`;
+      const levelVisual = getLevelVisual(curLevel, cfg.levels);
       const levelProgressText = `${curDoneInLevel} / ${maxLevelLessons} lessons`;
+      const totalLessonsText = `${done} / ${tl} lessons`;
+      const trackContext = getTrackContext(g.lang, curLevel);
 
       let daysRemaining = 'N/A';
       let status = 'In Progress';
@@ -615,22 +644,22 @@ app.get('/api/sync/students', verifySyncKey, async (_req, res) => {
 
       return [
         escapeCSV(g.group),
-        escapeCSV(teacherMap[g.tid] || 'Unknown Teacher'),
-        escapeCSV(g.lang),
-        escapeCSV(cfg.category || '-'),
         escapeCSV(currentStageName),
-        curLevel,
-        cfg.levels || 1,
+        escapeCSV(levelVisual),
+        `Level ${curLevel} of ${cfg.levels}`,
         escapeCSV(levelProgressText),
-        done,
-        tl,
+        escapeCSV(totalLessonsText),
         `="${progressPct}%"`,
-        escapeCSV(g.days || 'Every Day'),
-        escapeCSV(`${g.startTime || '–'} - ${g.endTime || '–'}`),
-        escapeCSV(g.start ? ` ${g.start}` : '-'),
+        escapeCSV(status),
+        escapeCSV(teacherMap[g.tid] || 'Unknown Teacher'),
         escapeCSV(g.exam ? ` ${g.exam}` : '-'),
         escapeCSV(daysRemaining),
-        escapeCSV(status)
+        escapeCSV(g.start ? ` ${g.start}` : '-'),
+        escapeCSV(g.days || 'Every Day'),
+        escapeCSV(`${g.startTime || '–'} - ${g.endTime || '–'}`),
+        g.students || 0,
+        escapeCSV(trackContext),
+        escapeCSV(cfg.category || '-')
       ].join(',');
     });
 
@@ -662,7 +691,7 @@ app.get('/api/sync/teachers', verifySyncKey, async (_req, res) => {
       'Active Groups Count',
       'Total Students',
       'Weekly Teaching Hours (hrs/wk)',
-      'Groups Summary (Group Name | Subject & Current Level | Schedule | Time Slot | Students)'
+      'Groups Summary (Group Name | Subject & Visual Level | Schedule | Time Slot | Students)'
     ];
 
     const rows = teachers.map(teacher => {
@@ -676,7 +705,8 @@ app.get('/api/sync/teachers', verifySyncKey, async (_req, res) => {
         const auto = isAuto ? autoProgressGroup(g) : null;
         const curLevel = isAuto ? auto.level : g.level;
         const cfg = PC[g.lang] || { levels: 1 };
-        return `${g.group} [${g.lang} (Level ${curLevel}/${cfg.levels}) | ${g.days} | ${g.startTime || '–'}-${g.endTime || '–'} | ${g.students} std]`;
+        const visual = getLevelVisual(curLevel, cfg.levels);
+        return `${g.group} [${g.lang} ${visual} | ${g.days} | ${g.startTime || '–'}-${g.endTime || '–'} | ${g.students} std]`;
       }).join('; ');
 
       return [
