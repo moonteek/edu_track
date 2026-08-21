@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, calcExamDates, getLessonsInLevel, fmtDate, autoProgress, computeElapsedLessons } from '../constants';
+import { totalDone, totalLessons, pct, tagCls, MODULES, PC, calcExamDate, calcExamDates, getLessonsInLevel, fmtDate, autoProgress, computeElapsedLessons, TRACK_SEQUENCES } from '../constants';
 import { useToast } from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 import TeacherCard from '../components/TeacherCard';
@@ -116,13 +116,18 @@ export default function AdminTeachers({ token, onLogout }) {
         }
     }
 
-    function openCreateGroupForTeacher(teacher) {
+    function openAddGroupModal(teacher) {
         setGroupTeacher(teacher);
-        const subs = Array.isArray(teacher.subject) ? teacher.subject : [teacher.subject];
-        const initialLang = (subs[0] && MODULES[subs[0]] && MODULES[subs[0]][0]) || '';
+        const subjects = Array.isArray(teacher.subject) ? teacher.subject : [teacher.subject];
+        const defaultCategory = subjects[0] || 'Web Development';
+        const defaultCourse = (MODULES[defaultCategory] && MODULES[defaultCategory][0]) || 'HTML';
+        const seq = TRACK_SEQUENCES[defaultCategory];
+        const rootLang = seq ? seq[0] : defaultCourse;
+
         setGForm({
             group: '',
-            lang: initialLang,
+            lang: defaultCourse,
+            trackStartLang: rootLang,
             level: 1,
             doneInLevel: 0,
             startTime: '',
@@ -131,7 +136,7 @@ export default function AdminTeachers({ token, onLogout }) {
             start: '',
             exam: '',
             students: '',
-            autoProgress: false,
+            autoProgress: true,
         });
         setGFormError('');
         setGroupModalOpen(true);
@@ -142,44 +147,56 @@ export default function AdminTeachers({ token, onLogout }) {
             const next = { ...f, [key]: val };
 
             // When start or schedule days change, auto-progress the subject, level, doneInLevel, and exam dates
-            if ((key === 'start' || key === 'days') && next.start && next.days && next.lang) {
-                try {
-                    const prog = autoProgress({
-                        start: next.start,
-                        days: next.days,
-                        lang: next.lang,
-                        level: 1,
-                        doneInLevel: 0,
-                        trackMode: true,
-                        trackStartLang: next.lang,
-                    });
-                    if (prog) {
-                        next.lang = prog.lang;
-                        next.level = prog.level;
-                        next.doneInLevel = prog.doneInLevel;
-                        next.exam = prog.currentExamDate || calcExamDate(next.start, next.days, prog.lang, prog.level, true);
-                        next.finalExam = prog.finalExamDate;
-                    }
-                } catch { }
-            } else if (key === 'lang') {
-                next.level = 1;
-                next.doneInLevel = 0;
+            if (key === 'start' || key === 'days') {
                 if (next.start && next.days) {
                     try {
+                        const cur = next.lang && PC[next.lang] ? next.lang : 'HTML';
+                        const cat = PC[cur]?.category;
+                        const seq = TRACK_SEQUENCES[cat];
+                        const rootLang = next.trackStartLang || (seq ? seq[0] : cur);
+
                         const prog = autoProgress({
                             start: next.start,
                             days: next.days,
-                            lang: val,
+                            lang: rootLang,
                             level: 1,
                             doneInLevel: 0,
                             trackMode: true,
-                            trackStartLang: val,
+                            trackStartLang: rootLang,
                         });
                         if (prog) {
                             next.lang = prog.lang;
                             next.level = prog.level;
                             next.doneInLevel = prog.doneInLevel;
-                            next.exam = prog.currentExamDate || calcExamDate(next.start, next.days, prog.lang, prog.level, true);
+                            next.exam = prog.currentExamDate || calcExamDate(next.start, next.days, prog.lang, prog.level, true, rootLang);
+                            next.finalExam = prog.finalExamDate;
+                            next.trackStartLang = rootLang;
+                        }
+                    } catch { }
+                }
+            } else if (key === 'lang') {
+                next.level = 1;
+                next.doneInLevel = 0;
+                const cat = PC[val]?.category;
+                const seq = TRACK_SEQUENCES[cat];
+                const rootLang = seq ? seq[0] : val;
+                next.trackStartLang = rootLang;
+                if (next.start && next.days) {
+                    try {
+                        const prog = autoProgress({
+                            start: next.start,
+                            days: next.days,
+                            lang: rootLang,
+                            level: 1,
+                            doneInLevel: 0,
+                            trackMode: true,
+                            trackStartLang: rootLang,
+                        });
+                        if (prog) {
+                            next.lang = prog.lang;
+                            next.level = prog.level;
+                            next.doneInLevel = prog.doneInLevel;
+                            next.exam = prog.currentExamDate || calcExamDate(next.start, next.days, prog.lang, prog.level, true, rootLang);
                             next.finalExam = prog.finalExamDate;
                         }
                     } catch { }
@@ -187,7 +204,7 @@ export default function AdminTeachers({ token, onLogout }) {
             } else if (key === 'level') {
                 if (next.start && next.days && next.lang) {
                     try {
-                        const examInfo = calcExamDates(next.start, next.days, next.lang, next.level || 1, true);
+                        const examInfo = calcExamDates(next.start, next.days, next.lang, next.level || 1, true, next.trackStartLang);
                         next.exam = examInfo.currentExamDate;
                         next.finalExam = examInfo.finalExamDate;
                     } catch { }
